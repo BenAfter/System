@@ -1,0 +1,2160 @@
+ReplicatedStorage
+├── Blaster (Folder)
+│     ├── Effects (Folder)
+│     │       ├──  impactEffect (LocalScript)
+│     │       └──  laserBeamEffect (LocalScript)
+│     ├── Objects (Folder)
+│     │       └──  CharacterImpact (Part)
+│     ├── Remotes (Folder)
+│     │       ├──  Reload (RemoteEvent)
+│     │       ├──  Shoot (RemoteEvent)
+│     │       └──  ReplicateShot (RemoteEvent)
+│     ├── Scripts (Folder)
+│     │       ├──  ShotReplication (LocalScript)
+│     │       ├──  BlasterController (ModuleScript)
+│     │       ├──  CameraRecoiler (ModuleScript)
+│     │       ├──  CharacterAnimationController (ModuleScript)
+│     │       ├──  GuiController (ModuleScript)
+│     │       ├──  InputCategorizer (ModuleScript)
+│     │       ├──  TouchInputController (ModuleScript)
+│     │       └──  ViewModelController (ModuleScript)
+│     ├── Utility (Folder)
+│     │       ├──  bindSoundsToAnimationEvents (LocalScript)
+│     │       ├──  canPlayerDamageHumanoid (ModuleScript)
+│     │       ├──  castRays (ModuleScript)
+│     │       ├──  drawRayResults (ModuleScript)
+│     │       ├──  getRayDirections (ModuleScript)
+│     │       ├──  playRandomSoundFromSource (ModuleScript)
+│     │       └──  playSoundFromSource (ModuleScript)
+│     ├── ViewModels (Folder)
+│     └── Constants (ModuleScript)
+└── Utility (Folder)
+       ├── bindToInstanceDestroyed (ModuleScript)
+       │       └──  DestructionHandler (LocalScript)
+       │                 └──  Bind (RemoteEvent)
+       ├── disconnectAndClear (ModuleScript)
+       ├── lerp (ModuleScript)
+       └── safePlayerAdded (ModuleScript)
+ServerScriptService
+├── Blaster (Folder)
+│     ├── Events (Folder)
+│     │       ├──  Eliminated (RemoteEvent)
+│     │       └──  Tagged (RemoteEvent)
+│     └── Scripts (Folder)
+│              ├──  AccessoryFiltering (Script)
+│              └──  Blaster (Script)
+│                       ├──  validateReload (ModuleScript)
+│                       ├──  validateShootArguments (ModuleScript)
+│                       ├──  validateShot (ModuleScript)
+│                       └──  validateTag (ModuleScript)
+├── Utility (Folder)
+│     └── TypeValidation (Folder)
+│              ├──  validateCFrame (ModuleScript)
+│              ├──  validateInstance (ModuleScript)
+│              ├──  validateNumber (ModuleScript)
+│              ├──  validateSimpleTable (ModuleScript)
+│              └──  validateVector3 (ModuleScript)
+└── Targets (Scrips)
+
+Code impactEffect:
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local environmentImpactTemplate = ReplicatedStorage.Blaster.Objects.EnvironmentImpact
+local characterImpactTemplate = ReplicatedStorage.Blaster.Objects.CharacterImpact
+
+local function impactEffect(position: Vector3, normal: Vector3, isCharacter: boolean)
+	local impact
+	if isCharacter then
+		impact = characterImpactTemplate:Clone()
+		impact.CFrame = CFrame.lookAlong(position, normal)
+		impact.Parent = Workspace
+
+		impact.SparkEmitter:Emit(10)
+		impact.CircleEmitter:Emit(2)
+	else
+		impact = environmentImpactTemplate:Clone()
+		impact.CFrame = CFrame.lookAlong(position, normal)
+		impact.Parent = Workspace
+
+		impact.SparkEmitter:Emit(10)
+		impact.CircleEmitter:Emit(2)
+	end
+
+	task.delay(0.5, function()
+		impact:Destroy()
+	end)
+end
+
+return impactEffect
+
+Code laserBeamEffect:
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+
+local Constants = require(ReplicatedStorage.Blaster.Constants)
+
+local laserBeamTemplate = ReplicatedStorage.Blaster.Objects.LaserBeam
+
+local function laserBeamEffect(startPosition: Vector3, endPosition: Vector3)
+	local distance = (startPosition - endPosition).Magnitude
+	local tweenTime = distance / Constants.LASER_BEAM_VISUAL_SPEED
+	local tweenInfo = TweenInfo.new(tweenTime, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+
+	local laser = laserBeamTemplate:Clone()
+	laser.CFrame = CFrame.lookAt(startPosition, endPosition)
+	laser.StartAttachment.Position = Vector3.zero
+	laser.EndAttachment.Position = Vector3.new(0, 0, -distance)
+	laser.Parent = Workspace
+
+	local tween = TweenService:Create(laser.StartAttachment, tweenInfo, { Position = laser.EndAttachment.Position })
+	tween:Play()
+	tween.Completed:Once(function()
+		laser:Destroy()
+	end)
+end
+
+return laserBeamEffect
+
+Code ShotReplication:
+
+--!nocheck
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local drawRayResults = require(script.Parent.Parent.Utility.drawRayResults)
+local castRays = require(script.Parent.Parent.Utility.castRays)
+local playRoundSoundFromSource = require(script.Parent.Parent.Utility.playRandomSoundFromSource)
+
+local remotes = ReplicatedStorage.Blaster.Remotes
+local replicateShotRemote = remotes.ReplicateShot
+
+local function onReplicateShotEvent(blaster: Tool, position: Vector3, rayResults: { castRays.RayResult })
+	-- Make sure that the blaster is currently streamed in
+	if blaster and blaster:IsDescendantOf(game) then
+		local handle = blaster.Handle
+		local sounds = blaster.Sounds
+		local muzzle = blaster:FindFirstChild("MuzzleAttachment", true)
+
+		-- If the blaster has a MuzzleAttachment, we'll use that as the laser starting point, otherwise
+		-- default to the blaster's pivot position.
+		if muzzle then
+			position = muzzle.WorldPosition
+
+			-- Play VFX
+			muzzle.FlashEmitter:Emit(1)
+		else
+			position = blaster:GetPivot().Position
+		end
+
+		-- Play SFX
+		playRoundSoundFromSource(sounds.Shoot, muzzle or handle)
+	end
+
+	drawRayResults(position, rayResults)
+end
+
+replicateShotRemote.OnClientEvent:Connect(onReplicateShotEvent)
+
+Code BlasterController:
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local Workspace = game:GetService("Workspace")
+
+local Constants = require(ReplicatedStorage.Blaster.Constants)
+local TouchInputController = require(script.Parent.TouchInputController)
+local CameraRecoiler = require(script.Parent.CameraRecoiler)
+local ViewModelController = require(script.Parent.ViewModelController)
+local CharacterAnimationController = require(script.Parent.CharacterAnimationController)
+local GuiController = require(script.Parent.GuiController)
+local disconnectAndClear = require(ReplicatedStorage.Utility.disconnectAndClear)
+local getRayDirections = require(script.Parent.Parent.Utility.getRayDirections)
+local drawRayResults = require(script.Parent.Parent.Utility.drawRayResults)
+local castRays = require(script.Parent.Parent.Utility.castRays)
+
+local player = Players.LocalPlayer
+local camera = Workspace.CurrentCamera
+local remotes = ReplicatedStorage.Blaster.Remotes
+local shootRemote = remotes.Shoot
+local reloadRemote = remotes.Reload
+
+local random = Random.new()
+
+local BlasterController = {}
+BlasterController.__index = BlasterController
+
+function BlasterController.new(blaster: Tool)
+	local viewModelController = ViewModelController.new(blaster)
+	local guiController = GuiController.new(blaster)
+	local touchInputController = TouchInputController.new(blaster)
+	local characterAnimationController = CharacterAnimationController.new(blaster)
+
+	local self = {
+		blaster = blaster,
+		viewModelController = viewModelController,
+		guiController = guiController,
+		touchInputController = touchInputController,
+		characterAnimationController = characterAnimationController,
+		activated = false,
+		equipped = false,
+		shooting = false,
+		ammo = blaster:GetAttribute(Constants.AMMO_ATTRIBUTE),
+		reloading = blaster:GetAttribute(Constants.RELOADING_ATTRIBUTE),
+		connections = {},
+	}
+	setmetatable(self, BlasterController)
+
+	self:initialize()
+
+	return self
+end
+
+function BlasterController:isHumanoidAlive(): boolean
+	return self.humanoid and self.humanoid.Health > 0
+end
+
+function BlasterController:canShoot(): boolean
+	return self:isHumanoidAlive() and self.equipped and self.ammo > 0 and not self.reloading
+end
+
+function BlasterController:canReload(): boolean
+	local magazineSize = self.blaster:GetAttribute(Constants.MAGAZINE_SIZE_ATTRIBUTE)
+	return self:isHumanoidAlive() and self.equipped and self.ammo < magazineSize and not self.reloading
+end
+
+function BlasterController:recoil()
+	local recoilMin = self.blaster:GetAttribute(Constants.RECOIL_MIN_ATTRIBUTE)
+	local recoilMax = self.blaster:GetAttribute(Constants.RECOIL_MAX_ATTRIBUTE)
+
+	local xDif = recoilMax.X - recoilMin.X
+	local yDif = recoilMax.Y - recoilMin.Y
+	local x = recoilMin.X + random:NextNumber() * xDif
+	local y = recoilMin.Y + random:NextNumber() * yDif
+
+	local recoil = Vector2.new(math.rad(-x), math.rad(y))
+
+	CameraRecoiler.recoil(recoil)
+end
+
+function BlasterController:shoot()
+	local spread = self.blaster:GetAttribute(Constants.SPREAD_ATTRIBUTE)
+	local raysPerShot = self.blaster:GetAttribute(Constants.RAYS_PER_SHOT_ATTRIBUTE)
+	local range = self.blaster:GetAttribute(Constants.RANGE_ATTRIBUTE)
+	local rayRadius = self.blaster:GetAttribute(Constants.RAY_RADIUS_ATTRIBUTE)
+
+	self.viewModelController:playShootAnimation()
+	self.characterAnimationController:playShootAnimation()
+	self:recoil()
+
+	self.ammo -= 1
+
+	self.guiController:setAmmo(self.ammo)
+
+	local now = Workspace:GetServerTimeNow()
+	local origin = camera.CFrame
+
+	local rayDirections = getRayDirections(origin, raysPerShot, math.rad(spread), now)
+	for index, direction in rayDirections do
+		rayDirections[index] = direction * range
+	end
+
+	local rayResults = castRays(player, origin.Position, rayDirections, rayRadius)
+
+	-- Rather than passing the entire table of rayResults to the server, we'll pass the shot origin and a list of tagged humanoids.
+	-- The server will then recalculate the ray directions from the origin and validate the tagged humanoids.
+	-- Strings are used for the indices since non-contiguous arrays do not get passed over the network correctly.
+	-- (This may be non-contiguous in the case of firing a shotgun, where not all of the rays hit a target)
+	local tagged = {}
+	local didTag = false
+	for index, rayResult in rayResults do
+		if rayResult.taggedHumanoid then
+			tagged[tostring(index)] = rayResult.taggedHumanoid
+			didTag = true
+		end
+	end
+
+	if didTag then
+		self.guiController:showHitmarker()
+	end
+
+	shootRemote:FireServer(now, self.blaster, origin, tagged)
+
+	local muzzlePosition = self.viewModelController:getMuzzlePosition()
+	drawRayResults(muzzlePosition, rayResults)
+end
+
+function BlasterController:startShooting()
+	-- If the player tries to shoot without any ammo, reload instead
+	if self.ammo == 0 then
+		self:reload()
+		return
+	end
+
+	if not self:canShoot() then
+		return
+	end
+
+	if self.shooting then
+		return
+	end
+
+	local fireMode = self.blaster:GetAttribute(Constants.FIRE_MODE_ATTRIBUTE)
+	local rateOfFire = self.blaster:GetAttribute(Constants.RATE_OF_FIRE_ATTRIBUTE)
+
+	if fireMode == Constants.FIRE_MODE.SEMI then
+		self.shooting = true
+		self:shoot()
+		task.delay(60 / rateOfFire, function()
+			self.shooting = false
+
+			if self.ammo == 0 then
+				self:reload()
+			end
+		end)
+	elseif fireMode == Constants.FIRE_MODE.AUTO then
+		task.spawn(function()
+			self.shooting = true
+			while self.activated and self:canShoot() do
+				self:shoot()
+				task.wait(60 / rateOfFire)
+			end
+			self.shooting = false
+
+			if self.ammo == 0 then
+				self:reload()
+			end
+		end)
+	end
+end
+
+function BlasterController:reload()
+	if not self:canReload() then
+		return
+	end
+
+	local reloadTime = self.blaster:GetAttribute(Constants.RELOAD_TIME_ATTRIBUTE)
+	local magazineSize = self.blaster:GetAttribute(Constants.MAGAZINE_SIZE_ATTRIBUTE)
+
+	self.viewModelController:playReloadAnimation(reloadTime)
+	self.characterAnimationController:playReloadAnimation(reloadTime)
+
+	self.reloading = true
+	self.guiController:setReloading(self.reloading)
+	reloadRemote:FireServer(self.blaster)
+
+	self.reloadTask = task.delay(reloadTime, function()
+		self.ammo = magazineSize
+		self.reloading = false
+		self.reloadTask = nil
+		self.guiController:setAmmo(self.ammo)
+		self.guiController:setReloading(self.reloading)
+	end)
+end
+
+function BlasterController:activate()
+	if self.activated then
+		return
+	end
+	self.activated = true
+
+	self:startShooting()
+end
+
+function BlasterController:deactivate()
+	if not self.activated then
+		return
+	end
+	self.activated = false
+end
+
+function BlasterController:equip()
+	if self.equipped then
+		return
+	end
+	self.equipped = true
+
+	-- Resync ammo and reloading values
+	self.ammo = self.blaster:GetAttribute(Constants.AMMO_ATTRIBUTE)
+	self.reloading = self.blaster:GetAttribute(Constants.RELOADING_ATTRIBUTE)
+
+	-- Enable view model
+	self.viewModelController:enable()
+
+	-- Enable GUI
+	self.guiController:setAmmo(self.ammo)
+	self.guiController:setReloading(self.reloading)
+	self.guiController:enable()
+
+	-- Enable touch input controller
+	self.touchInputController:enable()
+
+	-- Enable character animations
+	self.characterAnimationController:enable()
+
+	-- Keep track of the humanoid in the character currently equipping the blaster.
+	-- We need this to make sure the player can't shoot while dead.
+	self.humanoid = self.blaster.Parent:FindFirstChildOfClass("Humanoid")
+end
+
+function BlasterController:unequip()
+	if not self.equipped then
+		return
+	end
+	self.equipped = false
+
+	-- Force deactivate the blaster when unequipping it
+	self:deactivate()
+
+	-- If the blaster is being reloaded, stop it
+	if self.reloadTask then
+		task.cancel(self.reloadTask)
+		self.reloadTask = nil
+	end
+
+	-- Disable view model
+	self.viewModelController:disable()
+
+	-- Disable GUI
+	self.guiController:disable()
+
+	-- Disable touch input controller
+	self.touchInputController:disable()
+
+	-- Disable character animations
+	self.characterAnimationController:disable()
+end
+
+function BlasterController:initialize()
+	table.insert(
+		self.connections,
+		self.blaster.Equipped:Connect(function()
+			self:equip()
+		end)
+	)
+	table.insert(
+		self.connections,
+		self.blaster.Unequipped:Connect(function()
+			self:unequip()
+		end)
+	)
+	table.insert(
+		self.connections,
+		self.blaster.Activated:Connect(function()
+			self:activate()
+		end)
+	)
+	table.insert(
+		self.connections,
+		self.blaster.Deactivated:Connect(function()
+			self:deactivate()
+		end)
+	)
+	table.insert(
+		self.connections,
+		UserInputService.InputBegan:Connect(function(inputObject: InputObject, processed: boolean)
+			if processed then
+				return
+			end
+
+			if
+				inputObject.KeyCode == Constants.KEYBOARD_RELOAD_KEY_CODE
+				or inputObject.KeyCode == Constants.GAMEPAD_RELOAD_KEY_CODE
+			then
+				self:reload()
+			end
+		end)
+	)
+
+	self.touchInputController:setReloadCallback(function()
+		self:reload()
+	end)
+end
+
+function BlasterController:destroy()
+	self:unequip()
+	disconnectAndClear(self.connections)
+	self.viewModelController:destroy()
+	self.touchInputController:destroy()
+	self.characterAnimationController:destroy()
+	self.guiController:destroy()
+end
+
+return BlasterController
+
+Code CameraRecoiler:
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
+
+local Constants = require(ReplicatedStorage.Blaster.Constants)
+local lerp = require(ReplicatedStorage.Utility.lerp)
+
+local camera = Workspace.CurrentCamera
+
+local recoil = Vector2.new()
+local zoom = 0
+
+local function onRenderStepped(deltaTime: number)
+	camera.CFrame *= CFrame.Angles(recoil.Y * deltaTime, recoil.X * deltaTime, 0)
+	camera.FieldOfView = Constants.RECOIL_DEFAULT_FOV + zoom
+	recoil = recoil:Lerp(Vector2.zero, math.min(deltaTime * Constants.RECOIL_STOP_SPEED, 1))
+	zoom = lerp(zoom, 0, math.min(deltaTime * Constants.RECOIL_ZOOM_RETURN_SPEED, 1))
+end
+
+local CameraRecoiler = {}
+
+function CameraRecoiler.recoil(recoilAmount: Vector2)
+	zoom = 1
+	recoil += recoilAmount
+end
+
+RunService:BindToRenderStep(Constants.RECOIL_BIND_NAME, Enum.RenderPriority.Camera.Value + 1, onRenderStepped)
+
+return CameraRecoiler
+
+Code CharacterAnimationController:
+
+--!nocheck
+local CharacterAnimationController = {}
+CharacterAnimationController.__index = CharacterAnimationController
+
+function CharacterAnimationController.new(blaster: Tool)
+	local self = {
+		enabled = false,
+		loadedAnimations = false,
+		blaster = blaster,
+		animationTracks = {},
+	}
+	setmetatable(self, CharacterAnimationController)
+
+	return self
+end
+
+function CharacterAnimationController:playShootAnimation()
+	self.animationTracks.Shoot:Play(0)
+end
+
+function CharacterAnimationController:playReloadAnimation(reloadTime: number)
+	local speed = self.animationTracks.Reload.Length / reloadTime
+	self.animationTracks.Reload:Play(0.1, 1, speed)
+end
+
+function CharacterAnimationController:loadAnimations()
+	if self.loadedAnimations then
+		return
+	end
+
+	self.loadedAnimations = true
+
+	local animationsFolder = self.blaster.Animations
+	-- This should only be called when the blaster has been equipped
+	local humanoid = self.blaster.Parent:FindFirstChildOfClass("Humanoid")
+	assert(humanoid, "Blaster is not equipped")
+	local animator = humanoid.Animator
+
+	local animationTracks = {}
+	for _, animation in animationsFolder:GetChildren() do
+		local animationTrack = animator:LoadAnimation(animation)
+		animationTracks[animation.Name] = animationTrack
+
+		-- Unlike the ViewModelController, we won't tie any sounds to these animations.
+		-- Since we're playing these animations from the client and relying on default replication behavior,
+		-- any sounds we played here would overlap the view model sounds and wouldn't replicate.
+	end
+
+	self.animationTracks = animationTracks
+end
+
+function CharacterAnimationController:enable()
+	if self.enabled then
+		return
+	end
+	self.enabled = true
+
+	-- Load animations if they haven't been loaded already
+	if not self.loadedAnimations then
+		self:loadAnimations()
+	end
+
+	self.animationTracks.Idle:Play()
+end
+
+function CharacterAnimationController:disable()
+	if not self.enabled then
+		return
+	end
+	self.enabled = false
+
+	for _, animation in self.animationTracks do
+		animation:Stop()
+	end
+end
+
+function CharacterAnimationController:destroy()
+	self:disable()
+	-- Clear the animationTracks table so we don't keep any references around.
+	-- This makes sure the animation tracks get garbage collected correctly and don't cause a memory leak.
+	table.clear(self.animationTracks)
+end
+
+return CharacterAnimationController
+
+Code GuiController:
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local Constants = require(ReplicatedStorage.Blaster.Constants)
+local InputCategorizer = require(script.Parent.InputCategorizer)
+local disconnectAndClear = require(ReplicatedStorage.Utility.disconnectAndClear)
+
+local player = Players.LocalPlayer
+local playerGui = player.PlayerGui
+local blasterGuiTemplate = script.BlasterGui
+local reticleGuiTemplate = script.ReticleGui
+local hitmarkerSound = script.Hitmarker
+
+local AMMO_TEXT_FORMAT_STRING = `<font transparency="0.5">%s</font>%s`
+
+local GuiController = {}
+GuiController.__index = GuiController
+
+function GuiController.new(blaster: Tool)
+	local magazineSize = blaster:GetAttribute(Constants.MAGAZINE_SIZE_ATTRIBUTE)
+	local leadingZeros = #tostring(magazineSize)
+
+	local blasterGui = blasterGuiTemplate:Clone()
+	blasterGui.Blaster.IconLabel.Image = blaster.TextureId
+	blasterGui.Blaster.Ammo.MagazineLabel.Text = `/{magazineSize}`
+	blasterGui.Enabled = false
+	blasterGui.Parent = playerGui
+
+	local reticleGui = reticleGuiTemplate:Clone()
+	reticleGui.Enabled = false
+	reticleGui.Parent = playerGui
+
+	local scaleTweenInfo = TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	local transparencyTweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	local hitmarkerScaleTween = TweenService:Create(reticleGui.Hitmarker.UIScale, scaleTweenInfo, { Scale = 1 })
+	local hitmarkerTransparencyTween =
+		TweenService:Create(reticleGui.Hitmarker, transparencyTweenInfo, { GroupTransparency = 1 })
+
+	local self = {
+		blaster = blaster,
+		blasterGui = blasterGui,
+		reticleGui = reticleGui,
+		hitmarkerScaleTween = hitmarkerScaleTween,
+		hitmarkerTransparencyTween = hitmarkerTransparencyTween,
+		enabled = false,
+		leadingZeros = leadingZeros,
+		ammo = 0,
+		reloading = false,
+		connections = {},
+	}
+	setmetatable(self, GuiController)
+	self:initialize()
+	return self
+end
+
+function GuiController:initialize()
+	table.insert(
+		self.connections,
+		self.blasterGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			self:updateScale()
+		end)
+	)
+
+	table.insert(
+		self.connections,
+		InputCategorizer.lastInputCategoryChanged:Connect(function()
+			self:updateAlignment()
+		end)
+	)
+
+	self:updateScale()
+	self:updateAlignment()
+end
+
+function GuiController:updateScale()
+	-- Update UI size. This is the same logic used by the default touch controls
+	local minScreenSize = math.min(self.blasterGui.AbsoluteSize.X, self.blasterGui.AbsoluteSize.Y)
+	local isSmallScreen = minScreenSize < Constants.UI_SMALL_SCREEN_THRESHOLD
+	self.blasterGui.UIScale.Scale = if isSmallScreen then Constants.UI_SMALL_SCREEN_SCALE else 1
+end
+
+function GuiController:updateAlignment()
+	local lastInputCategory = InputCategorizer.getLastInputCategory()
+	if lastInputCategory == InputCategorizer.InputCategory.Touch then
+		-- Align the blaster UI to the center of the screen, since the touch controls cover the bottom right corner
+		self.blasterGui.Blaster.AnchorPoint = Vector2.new(0.5, 1)
+		-- Slight vertical offset to account for the backpack UI
+		self.blasterGui.Blaster.Position = UDim2.new(0.5, 0, 1, -65)
+	else
+		self.blasterGui.Blaster.AnchorPoint = Vector2.new(1, 1)
+		self.blasterGui.Blaster.Position = UDim2.fromScale(1, 1)
+	end
+end
+
+function GuiController:updateAmmoText()
+	local zeroText = ""
+	local ammoText = ""
+
+	if self.reloading then
+		zeroText = string.rep("-", self.leadingZeros)
+	else
+		ammoText = tostring(self.ammo)
+		local numZeros = self.leadingZeros - #ammoText
+		if numZeros > 0 then
+			-- Add leading zeros to the ammo text, using rich text to give them a higher transparency
+			zeroText = string.rep("0", numZeros)
+		end
+	end
+
+	self.blasterGui.Blaster.Ammo.AmmoLabel.Text = string.format(AMMO_TEXT_FORMAT_STRING, zeroText, ammoText)
+end
+
+function GuiController:setAmmo(ammo: number)
+	self.ammo = ammo
+	self:updateAmmoText()
+end
+
+function GuiController:setReloading(reloading: boolean)
+	self.reloading = reloading
+	self:updateAmmoText()
+end
+
+function GuiController:showHitmarker()
+	-- Slightly delay the hitmarker sound so it doesn't overlap the shooting sound
+	task.delay(Constants.HITMARKER_SOUND_DELAY, function()
+		hitmarkerSound:Play()
+	end)
+
+	if self.hitmarkerScaleTween.PlaybackState == Enum.PlaybackState.Playing then
+		self.hitmarkerScaleTween:Cancel()
+	end
+	if self.hitmarkerTransparencyTween.PlaybackState == Enum.PlaybackState.Playing then
+		self.hitmarkerTransparencyTween:Cancel()
+	end
+
+	self.reticleGui.Hitmarker.GroupTransparency = 0
+	self.reticleGui.Hitmarker.UIScale.Scale = 2
+
+	self.hitmarkerScaleTween:Play()
+	self.hitmarkerTransparencyTween:Play()
+end
+
+function GuiController:enable()
+	if self.enabled then
+		return
+	end
+	self.enabled = true
+	self.blasterGui.Enabled = true
+	self.reticleGui.Enabled = true
+
+	UserInputService.MouseIconEnabled = false
+end
+
+function GuiController:disable()
+	if not self.enabled then
+		return
+	end
+	self.enabled = false
+	self.blasterGui.Enabled = false
+	self.reticleGui.Enabled = false
+
+	UserInputService.MouseIconEnabled = true
+end
+
+function GuiController:destroy()
+	self:disable()
+	disconnectAndClear(self.connections)
+	self.blasterGui:Destroy()
+	self.reticleGui:Destroy()
+end
+
+return GuiController
+
+Code InputCategorizer:
+
+--!strict
+
+-- Sourced from Code Samples:
+-- https://create.roblox.com/docs/samples
+-- https://create.roblox.com/store/asset/13595021558/Input-Categorizer
+
+local UserInputService = game:GetService("UserInputService")
+
+local lastInputCategoryChangedEvent = Instance.new("BindableEvent")
+
+type ActionCallback = (string, Enum.UserInputState, InputObject) -> ...any
+
+local InputCategory = {
+	KeyboardAndMouse = "KeyboardAndMouse",
+	Gamepad = "Gamepad",
+	Touch = "Touch",
+	Unknown = "Unknown",
+}
+
+local InputCategorizer = {
+	InputCategory = InputCategory,
+	lastInputCategoryChanged = lastInputCategoryChangedEvent.Event,
+	_lastInputCategory = InputCategory.Unknown,
+	_initialized = false,
+}
+
+-- Return the last input category
+function InputCategorizer.getLastInputCategory()
+	return InputCategorizer._lastInputCategory
+end
+
+-- If _lastInputCategory and inputCategory are different, set _lastInputCategory and fire lastInputCategoryChanged
+function InputCategorizer._setLastInputCategory(inputCategory: string)
+	if InputCategorizer._lastInputCategory ~= inputCategory then
+		InputCategorizer._lastInputCategory = inputCategory
+		lastInputCategoryChangedEvent:Fire(inputCategory)
+	end
+end
+
+-- Return an InputCategory based on the UserInputType
+function InputCategorizer._getCategoryOfInputType(inputType: Enum.UserInputType)
+	if string.find(inputType.Name, "Gamepad") then
+		return InputCategory.Gamepad
+	elseif inputType == Enum.UserInputType.Keyboard or string.find(inputType.Name, "Mouse") then
+		return InputCategory.KeyboardAndMouse
+	elseif inputType == Enum.UserInputType.Touch then
+		return InputCategory.Touch
+	else
+		return InputCategory.Unknown
+	end
+end
+
+function InputCategorizer._onInputTypeChanged(inputType: Enum.UserInputType)
+	local inputCategory = InputCategorizer._getCategoryOfInputType(inputType)
+	if inputCategory ~= InputCategory.Unknown then
+		InputCategorizer._setLastInputCategory(inputCategory)
+	end
+end
+
+-- Return a default input category based on the current peripherals
+function InputCategorizer._getDefaultInputCategory()
+	local lastInputType = UserInputService:GetLastInputType()
+	local lastInputCategory = InputCategorizer._getCategoryOfInputType(lastInputType)
+
+	if lastInputCategory ~= InputCategory.Unknown then
+		return lastInputCategory
+	end
+
+	if UserInputService.KeyboardEnabled and UserInputService.MouseEnabled then
+		return InputCategory.KeyboardAndMouse
+	elseif UserInputService.TouchEnabled then
+		return InputCategory.Touch
+	elseif UserInputService.GamepadEnabled then
+		return InputCategory.Gamepad
+	else
+		warn("No input devices detected!")
+		return InputCategory.Unknown
+	end
+end
+
+function InputCategorizer._initialize()
+	assert(not InputCategorizer._initialized, "InputCategorizer already initialized!")
+
+	-- Update the last category when the last inputType changes
+	UserInputService.LastInputTypeChanged:Connect(InputCategorizer._onInputTypeChanged)
+
+	-- Set the starting input category
+	local defaultInputCategory = InputCategorizer._getDefaultInputCategory()
+	InputCategorizer._setLastInputCategory(defaultInputCategory)
+
+	InputCategorizer._initialized = true
+end
+
+InputCategorizer._initialize()
+
+return InputCategorizer
+
+Code TouchInputController:
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+
+local Constants = require(ReplicatedStorage.Blaster.Constants)
+local InputCategorizer = require(script.Parent.InputCategorizer)
+local disconnectAndClear = require(ReplicatedStorage.Utility.disconnectAndClear)
+
+local player = Players.LocalPlayer
+local playerGui = player.PlayerGui
+local touchGuiTemplate = script.BlasterTouchGui
+
+local TouchInputController = {}
+TouchInputController.__index = TouchInputController
+
+function TouchInputController.new(blaster: Tool)
+	local touchGui = touchGuiTemplate:Clone()
+	touchGui.Enabled = false
+	touchGui.Parent = playerGui
+
+	local self = {
+		blaster = blaster,
+		gui = touchGui,
+		enabled = false,
+		connections = {},
+	}
+	setmetatable(self, TouchInputController)
+	return self
+end
+
+function TouchInputController:updateScale()
+	-- Update UI size. This is the same logic used by the default touch controls
+	local minScreenSize = math.min(self.gui.AbsoluteSize.X, self.gui.AbsoluteSize.Y)
+	local isSmallScreen = minScreenSize < Constants.UI_SMALL_SCREEN_THRESHOLD
+	self.gui.UIScale.Scale = if isSmallScreen then Constants.UI_SMALL_SCREEN_SCALE else 1
+end
+
+function TouchInputController:enableTouchInput()
+	self.gui.Enabled = true
+	-- Since we're going to be manually activating the blaster with a gui button, we disable the default tool activation
+	self.blaster.ManualActivationOnly = true
+end
+
+function TouchInputController:disableTouchInput()
+	self.gui.Enabled = false
+	self.blaster.ManualActivationOnly = false
+end
+
+function TouchInputController:onReloadButtonInput(inputObject: InputObject)
+	if inputObject.UserInputType ~= Enum.UserInputType.Touch then
+		return
+	end
+
+	if self.reloadCallback then
+		self.reloadCallback()
+	end
+end
+
+function TouchInputController:onShootButtonInput(inputObject: InputObject)
+	if inputObject.UserInputType ~= Enum.UserInputType.Touch then
+		return
+	end
+
+	-- Save this inputObject as the current object being held to shoot. InputObjects are persistent as long
+	-- as the user's finger stays down, so we can check later to see if this input has stopped.
+	self.shootInputObject = inputObject
+	self.blaster:Activate()
+end
+
+-- Since the user may swipe off of the shoot button by aiming around, we need to listen to all input ended
+-- events in order to check when they actually stop holding the shoot button.
+function TouchInputController:onInputEnded(inputObject: InputObject)
+	if self.shootInputObject == inputObject then
+		self.shootInputObject = nil
+		self.blaster:Deactivate()
+	end
+end
+
+function TouchInputController:setReloadCallback(callback: () -> ())
+	self.reloadCallback = callback
+end
+
+function TouchInputController:enable()
+	if self.enabled then
+		return
+	end
+
+	self.enabled = true
+
+	table.insert(
+		self.connections,
+		InputCategorizer.lastInputCategoryChanged:Connect(function(lastInputCategory)
+			self:onLastInputCategoryChanged(lastInputCategory)
+		end)
+	)
+
+	table.insert(
+		self.connections,
+		self.gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+			self:updateScale()
+		end)
+	)
+
+	table.insert(
+		self.connections,
+		self.gui.Buttons.ShootButton.InputBegan:Connect(function(inputObject: InputObject)
+			-- Change events will fire even though we're listening to InputBegan, we need to ignore those
+			if inputObject.UserInputState == Enum.UserInputState.Change then
+				return
+			end
+			self:onShootButtonInput(inputObject)
+		end)
+	)
+
+	table.insert(
+		self.connections,
+		self.gui.Buttons.ReloadButton.InputBegan:Connect(function(inputObject: InputObject)
+			-- Change events will fire even though we're listening to InputBegan, we need to ignore those
+			if inputObject.UserInputState == Enum.UserInputState.Change then
+				return
+			end
+			self:onReloadButtonInput(inputObject)
+		end)
+	)
+
+	table.insert(
+		self.connections,
+		UserInputService.InputEnded:Connect(function(inputObject: InputObject)
+			self:onInputEnded(inputObject)
+		end)
+	)
+
+	local lastInputCategory = InputCategorizer.getLastInputCategory()
+	self:onLastInputCategoryChanged(lastInputCategory)
+	self:updateScale()
+end
+
+function TouchInputController:disable()
+	if not self.enabled then
+		return
+	end
+
+	self.enabled = false
+	self:disableTouchInput()
+	disconnectAndClear(self.connections)
+end
+
+function TouchInputController:onLastInputCategoryChanged(lastInputCategory)
+	if lastInputCategory == InputCategorizer.InputCategory.Touch then
+		self:enableTouchInput()
+	else
+		self:disableTouchInput()
+	end
+end
+
+function TouchInputController:destroy()
+	self:disable()
+	self.gui:Destroy()
+end
+
+return TouchInputController
+
+Code ViewModelController:
+
+--!nocheck
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
+local Workspace = game:GetService("Workspace")
+
+local Constants = require(ReplicatedStorage.Blaster.Constants)
+local disconnectAndClear = require(ReplicatedStorage.Utility.disconnectAndClear)
+local lerp = require(ReplicatedStorage.Utility.lerp)
+local bindSoundsToAnimationEvents = require(script.Parent.Parent.Utility.bindSoundsToAnimationEvents)
+
+local camera = Workspace.CurrentCamera
+local viewModels = ReplicatedStorage.Blaster.ViewModels
+
+local ViewModelController = {}
+ViewModelController.__index = ViewModelController
+
+function ViewModelController.new(blaster: Tool)
+	-- Despite the blaster streaming mode being set to Atomic, objects outside of workspace are not streamed.
+	-- This means we need to WaitForChild, since the blaster will be parented to the player's Backpack initially.
+	local handle = blaster:WaitForChild("Handle")
+	local sounds = blaster:WaitForChild("Sounds")
+
+	local viewModelName = blaster:GetAttribute(Constants.VIEW_MODEL_ATTRIBUTE)
+	local viewModelTemplate = viewModels[viewModelName]
+
+	local viewModel = viewModelTemplate:Clone()
+	local muzzle = viewModel:FindFirstChild("MuzzleAttachment", true)
+	assert(muzzle, `{viewModel} is missing MuzzleAttachment!`)
+
+	local animator = viewModel.AnimationController.Animator
+	local animationsFolder = viewModel.Animations
+
+	-- The viewModel needs to be parented to the DataModel in order to load animations, otherwise it will throw an error
+	viewModel.Parent = ReplicatedStorage
+
+	local animations = {}
+	for _, animation in animationsFolder:GetChildren() do
+		local animationTrack = animator:LoadAnimation(animation)
+		animations[animation.Name] = animationTrack
+
+		-- Sounds will all be driven by animation events
+		bindSoundsToAnimationEvents(animationTrack, sounds, SoundService)
+	end
+
+	local self = {
+		enabled = false,
+		blaster = blaster,
+		handle = handle,
+		model = viewModel,
+		muzzle = muzzle,
+		animations = animations,
+		toolInstances = {},
+		connections = {},
+		stride = 0,
+		bobbing = 0,
+	}
+	setmetatable(self, ViewModelController)
+
+	return self
+end
+
+function ViewModelController:update(deltaTime: number)
+	-- Hide tool instances
+	for _, instance in self.toolInstances do
+		instance.LocalTransparencyModifier = 1
+	end
+
+	-- View model bobbing animation
+	local moveSpeed = (self.handle.AssemblyLinearVelocity * Vector3.new(1, 0, 1)).Magnitude
+	local bobbingSpeed = moveSpeed * Constants.VIEW_MODEL_BOBBING_SPEED
+	local bobbing = math.min(bobbingSpeed, 1)
+
+	self.stride = (self.stride + bobbingSpeed * deltaTime) % (math.pi * 2)
+	self.bobbing = lerp(self.bobbing, bobbing, math.min(deltaTime * Constants.VIEW_MODEL_BOBBING_TRANSITION_SPEED, 1))
+
+	local x = math.sin(self.stride)
+	local y = math.sin(self.stride * 2)
+	local bobbingOffset = Vector3.new(x, y, 0) * Constants.VIEW_MODEL_BOBBING_AMOUNT * self.bobbing
+	local bobbingCFrame = CFrame.new(bobbingOffset)
+
+	self.model:PivotTo(camera.CFrame * Constants.VIEW_MODEL_OFFSET * bobbingCFrame)
+end
+
+function ViewModelController:checkForToolInstance(instance: Instance)
+	if not (instance:IsA("BasePart") or instance:IsA("Decal")) then
+		return
+	end
+
+	local tool = instance:FindFirstAncestorOfClass("Tool")
+	if not tool then
+		return
+	end
+
+	table.insert(self.toolInstances, instance)
+end
+
+function ViewModelController:hideToolInstances()
+	local character = self.blaster.Parent
+
+	table.insert(
+		self.connections,
+		character.DescendantAdded:Connect(function(descendant: Instance)
+			self:checkForToolInstance(descendant)
+		end)
+	)
+
+	table.insert(
+		self.connections,
+		character.DescendantRemoving:Connect(function(descendant: Instance)
+			local index = table.find(self.toolInstances, descendant)
+			if index then
+				table.remove(self.toolInstances, index)
+			end
+		end)
+	)
+
+	for _, descendant in character:GetDescendants() do
+		self:checkForToolInstance(descendant)
+	end
+end
+
+function ViewModelController:stopHidingToolInstances()
+	table.clear(self.toolInstances)
+	disconnectAndClear(self.connections)
+end
+
+function ViewModelController:getMuzzlePosition(): Vector3
+	return self.muzzle.WorldPosition
+end
+
+function ViewModelController:playShootAnimation()
+	self.animations.Shoot:Play(0)
+	self.muzzle.FlashEmitter:Emit(1)
+	self.muzzle.CircleEmitter:Emit(1)
+end
+
+function ViewModelController:playReloadAnimation(reloadTime: number)
+	self.animations.Shoot:Stop()
+	local speed = self.animations.Reload.Length / reloadTime
+	self.animations.Reload:Play(Constants.VIEW_MODEL_RELOAD_FADE_TIME, 1, speed)
+end
+
+function ViewModelController:enable()
+	if self.enabled then
+		return
+	end
+	self.enabled = true
+
+	RunService:BindToRenderStep(
+		Constants.VIEW_MODEL_BIND_NAME,
+		Enum.RenderPriority.Camera.Value + 1,
+		function(deltaTime: number)
+			self:update(deltaTime)
+		end
+	)
+	self.model.Parent = Workspace
+	self:hideToolInstances()
+
+	-- Play equip and idle animations
+	self.animations.Idle:Play()
+	self.animations.Equip:Play(0)
+end
+
+function ViewModelController:disable()
+	if not self.enabled then
+		return
+	end
+	self.enabled = false
+
+	RunService:UnbindFromRenderStep(Constants.VIEW_MODEL_BIND_NAME)
+	self.model.Parent = nil
+	self:stopHidingToolInstances()
+
+	for _, animation in self.animations do
+		animation:Stop(0)
+	end
+end
+
+function ViewModelController:destroy()
+	disconnectAndClear(self.connections)
+	self:disable()
+	self.model:Destroy()
+end
+
+return ViewModelController
+
+Code bindSoundsToAnimationEvents:
+
+local playSoundFromSource = require(script.Parent.playSoundFromSource)
+local playRandomSoundFromSource = require(script.Parent.playRandomSoundFromSource)
+
+local SOUND_EVENT = "Sound"
+local RANDOM_SOUND_EVENT = "RandomSound"
+
+local function bindSoundsToAnimationEvents(animation: AnimationTrack, sounds: Folder, source: Instance)
+	animation:GetMarkerReachedSignal(SOUND_EVENT):Connect(function(param: string)
+		local sound = sounds:FindFirstChild(param)
+		if not sound then
+			return
+		end
+		playSoundFromSource(sound, source)
+	end)
+
+	-- For repetitive sounds like shooting, we'll play a random sound variation from a selection, rather than playing the same sound over and over.
+	animation:GetMarkerReachedSignal(RANDOM_SOUND_EVENT):Connect(function(param: string)
+		local folder = sounds:FindFirstChild(param)
+		if not folder then
+			return
+		end
+		playRandomSoundFromSource(folder, source)
+	end)
+end
+
+return bindSoundsToAnimationEvents
+
+Code canPlayerDamageHumanoid:
+
+local Players = game:GetService("Players")
+
+local function canPlayerDamageHumanoid(player: Player, taggedHumanoid: Humanoid): boolean
+	-- If the humanoid is already dead, no need to apply more damage
+	if taggedHumanoid.Health <= 0 then
+		return false
+	end
+
+	local taggedCharacter = taggedHumanoid.Parent
+	local taggedPlayer = Players:GetPlayerFromCharacter(taggedCharacter)
+	-- If the player tagged a non-player humanoid then allow damage
+	if not taggedPlayer then
+		return true
+	end
+
+	if player.Neutral or taggedPlayer.Neutral then
+		-- If either player is neutral (i.e. not on a team) then allow damage
+		return true
+	else
+		-- Only allow damage if the players are not on the same team
+		return player.Team ~= taggedPlayer.Team
+	end
+end
+
+return canPlayerDamageHumanoid
+
+Code castRays:
+
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Constants = require(ReplicatedStorage.Blaster.Constants)
+local canPlayerDamageHumanoid = require(ReplicatedStorage.Blaster.Utility.canPlayerDamageHumanoid)
+
+export type RayResult = {
+	taggedHumanoid: Humanoid?,
+	position: Vector3,
+	normal: Vector3,
+	instance: Instance?,
+}
+
+local function castRays(
+	player: Player,
+	position: Vector3,
+	directions: { Vector3 },
+	radius: number,
+	staticOnly: boolean?
+): { RayResult }
+	local exclude = CollectionService:GetTagged(Constants.RAY_EXCLUDE_TAG)
+
+	if staticOnly then
+		local nonStatic = CollectionService:GetTagged(Constants.NON_STATIC_TAG)
+		-- Append nonStatic to exclude
+		table.move(nonStatic, 1, #nonStatic, #exclude + 1, exclude)
+	end
+
+	-- Always include the player's character in the exclude list
+	if player.Character then
+		table.insert(exclude, player.Character)
+	end
+
+	local collisionGroup = nil
+
+	-- If the player is on a team, use that team's collision group to ensure the ray passes through
+	-- characters and forcefields on that team.
+	if player.Team and not player.Neutral then
+		collisionGroup = player.Team.Name
+	end
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.IgnoreWater = true
+	params.FilterDescendantsInstances = exclude
+	if collisionGroup then
+		params.CollisionGroup = collisionGroup
+	end
+
+	local rayResults = {}
+
+	for _, direction in directions do
+		-- In order to provide a simple form of bullet magnetism, we use spherecasts with a small radius instead of raycasts.
+		-- This allows closely grazing shots to register as hits, making blasters feel a bit more accurate and improving the 'game feel'.
+		local raycastResult = Workspace:Spherecast(position, radius, direction, params)
+		local rayResult: RayResult = {
+			position = position + direction,
+			normal = direction.Unit,
+		}
+
+		if raycastResult then
+			rayResult.position = raycastResult.Position
+			rayResult.normal = raycastResult.Normal
+			rayResult.instance = raycastResult.Instance
+
+			local humanoid = raycastResult.Instance.Parent:FindFirstChildOfClass("Humanoid")
+			if humanoid and canPlayerDamageHumanoid(player, humanoid) then
+				rayResult.taggedHumanoid = humanoid
+			end
+		end
+
+		table.insert(rayResults, rayResult)
+	end
+
+	return rayResults
+end
+
+return castRays
+
+Code drawRayResults:
+
+local castRays = require(script.Parent.castRays)
+local laserBeamEffect = require(script.Parent.Parent.Effects.laserBeamEffect)
+local impactEffect = require(script.Parent.Parent.Effects.impactEffect)
+
+local function drawRayResults(position: Vector3, rayResults: { castRays.RayResult })
+	for _, rayResult in rayResults do
+		laserBeamEffect(position, rayResult.position)
+
+		if rayResult.instance then
+			impactEffect(rayResult.position, rayResult.normal, rayResult.taggedHumanoid ~= nil)
+		end
+	end
+end
+
+return drawRayResults
+
+Code getRayDirections:
+
+local function getRayDirections(origin: CFrame, numberOfRays: number, spreadAngle: number, seed: number): { Vector3 }
+	-- Random seeds are ints. Since we'll generally be passing in a timestamp as the seed,
+	-- we need to multiply it to make sure it isn't the same for an entire second.
+	local random = Random.new(seed * 100_000)
+
+	local rays = {}
+
+	for _ = 1, numberOfRays do
+		local roll = random:NextNumber() * math.pi * 2
+		local pitch = random:NextNumber() * spreadAngle
+
+		local rayCFrame = origin * CFrame.Angles(0, 0, roll) * CFrame.Angles(pitch, 0, 0)
+		table.insert(rays, rayCFrame.LookVector)
+	end
+
+	return rays
+end
+
+return getRayDirections
+
+Code playRandomSoundFromSource:
+
+local playSoundFromSource = require(script.Parent.playSoundFromSource)
+
+local random = Random.new()
+
+local function playRandomSoundFromSource(soundTemplates: Folder, source: Instance)
+	local sounds = soundTemplates:GetChildren()
+	local sound = sounds[random:NextInteger(1, #sounds)]
+	playSoundFromSource(sound, source)
+end
+
+return playRandomSoundFromSource
+
+Code playSoundFromSource:
+
+local function playSoundFromSource(soundTemplate: Sound, source: Instance)
+	local sound = soundTemplate:Clone()
+	sound.Parent = source
+
+	sound:Play()
+	sound.Ended:Once(function()
+		if sound:IsDescendantOf(game) then
+			sound:Destroy()
+		end
+	end)
+end
+
+return playSoundFromSource
+
+Code Constants:
+
+local Constants = {
+	RAY_EXCLUDE_TAG = "RayExclude",
+	NON_STATIC_TAG = "NonStatic",
+	FIRE_MODE = {
+		SEMI = "Semi",
+		AUTO = "Auto",
+	},
+	AMMO_ATTRIBUTE = "_ammo",
+	RELOADING_ATTRIBUTE = "_reloading",
+	DAMAGE_ATTRIBUTE = "damage",
+	FIRE_MODE_ATTRIBUTE = "fireMode",
+	MAGAZINE_SIZE_ATTRIBUTE = "magazineSize",
+	RANGE_ATTRIBUTE = "range",
+	RATE_OF_FIRE_ATTRIBUTE = "rateOfFire",
+	RELOAD_TIME_ATTRIBUTE = "reloadTime",
+	RAYS_PER_SHOT_ATTRIBUTE = "raysPerShot",
+	RAY_RADIUS_ATTRIBUTE = "rayRadius",
+	SPREAD_ATTRIBUTE = "spread",
+	VIEW_MODEL_ATTRIBUTE = "viewModel",
+	RECOIL_MIN_ATTRIBUTE = "recoilMin",
+	RECOIL_MAX_ATTRIBUTE = "recoilMax",
+	UNANCHORED_IMPULSE_FORCE_ATTRIBUTE = "unanchoredImpulseForce",
+
+	KEYBOARD_RELOAD_KEY_CODE = Enum.KeyCode.R,
+	GAMEPAD_RELOAD_KEY_CODE = Enum.KeyCode.ButtonX,
+
+	-- Pixel size under which a screen is considered 'small'. This is the same threshold used by the default touch UI.
+	UI_SMALL_SCREEN_THRESHOLD = 500,
+	-- Amount to scale the UI when on a small screen
+	UI_SMALL_SCREEN_SCALE = 0.6,
+
+	HITMARKER_SOUND_DELAY = 0.1,
+
+	-- View model
+	VIEW_MODEL_BIND_NAME = "BlasterViewModel",
+	VIEW_MODEL_OFFSET = CFrame.new(0.9, -1.3, -1.3),
+	VIEW_MODEL_BOBBING_SPEED = 0.4,
+	VIEW_MODEL_BOBBING_AMOUNT = 0.05,
+	VIEW_MODEL_BOBBING_TRANSITION_SPEED = 10,
+	VIEW_MODEL_RELOAD_FADE_TIME = 0.1,
+	-- Recoil
+	RECOIL_BIND_NAME = "Recoiler",
+	RECOIL_STOP_SPEED = 10,
+	RECOIL_ZOOM_RETURN_SPEED = 20,
+	RECOIL_DEFAULT_FOV = 70,
+	-- VFX
+	LASER_BEAM_VISUAL_SPEED = 200,
+}
+
+return Constants
+
+Code bindToInstanceDestroyed:
+
+local Players = game:GetService("Players")
+
+local player = Players.LocalPlayer
+local destructionHandlerTemplate = script.DestructionHandler
+
+-- When using Deferred signal mode: scripts parented to an object cannot listen to that object's Destroying event, since it is
+-- disconnected up before being executed.
+-- To avoid this, we'll use a hacky solution and clone a listener script into PlayerScripts.
+-- This script will continue running after the instance is destroyed and allow us to run e.g. cleanup code when it gets destroyed.
+local function bindToInstanceDestroyed(instance: Instance, callback: () -> ())
+	local destructionHandler = destructionHandlerTemplate:Clone()
+	destructionHandler.Parent = player.PlayerScripts
+
+	-- Defer firing the BindableEvent so the script is able to initialize first
+	task.defer(function()
+		destructionHandler.Bind:Fire(instance, callback)
+	end)
+end
+
+return bindToInstanceDestroyed
+
+Code DestructionHandler:
+
+-- When using Deferred signal mode: scripts parented to objects are not able to listen to their own .Destroying event.
+-- This script is cloned and used to listen to the .Destroying event in a separate thread.
+
+local bindEvent = script.Bind
+
+bindEvent.Event:Connect(function(instance: Instance, callback: () -> ())
+	local destroyingConnection
+	local ancestryChangedConnection
+
+	-- Listen to AncestryChanged as well as Destroying, since some events like falling into the void
+	-- do not actually Destroy instances.
+	ancestryChangedConnection = instance.AncestryChanged:Connect(function()
+		if not instance:IsDescendantOf(game) then
+			destroyingConnection:Disconnect()
+			ancestryChangedConnection:Disconnect()
+			callback()
+			script:Destroy()
+		end
+	end)
+
+	destroyingConnection = instance.Destroying:Once(function()
+		-- No need to disconnect destroyingConnection since we're only connecting to it :Once
+		ancestryChangedConnection:Disconnect()
+		callback()
+		script:Destroy()
+	end)
+end)
+
+Code disconnectAndClear:
+
+local function disconnectAndClear(connections: { RBXScriptConnection })
+	for _, connection in connections do
+		connection:Disconnect()
+	end
+	table.clear(connections)
+end
+
+return disconnectAndClear
+
+Code lerp:
+
+local function lerp(a: number, b: number, t: number): number
+	return a + (b - a) * t
+end
+
+return lerp
+
+Code safePlayerAdded:
+
+local Players = game:GetService("Players")
+
+local function safePlayerAdded(callback: (Player) -> ())
+	for _, player in Players:GetPlayers() do
+		task.spawn(callback, player)
+	end
+
+	return Players.PlayerAdded:Connect(callback)
+end
+
+return safePlayerAdded
+
+Code AccessoryFiltering:
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local Constants = require(ReplicatedStorage.Blaster.Constants)
+local safePlayerAdded = require(ReplicatedStorage.Utility.safePlayerAdded)
+
+local function tagPart(part: BasePart)
+	-- Tag all character parts as NON_STATIC, so they can be ignored when casting against static geometry
+	part:AddTag(Constants.NON_STATIC_TAG)
+
+	-- Tag parts in accessories and tools with RAY_EXCLUDE_TAG so they can be ignored by raycasts
+	local accessory = part:FindFirstAncestorWhichIsA("Accessory")
+	local tool = part:FindFirstAncestorWhichIsA("Tool")
+	if accessory or tool then
+		part:AddTag(Constants.RAY_EXCLUDE_TAG)
+	end
+end
+
+local function onCharacterAdded(character: Model)
+	local player = Players:GetPlayerFromCharacter(character)
+	if not player then
+		return
+	end
+
+	character.DescendantAdded:Connect(function(instance: Instance)
+		if instance:IsA("BasePart") then
+			tagPart(instance)
+		end
+	end)
+
+	for _, instance in character:GetDescendants() do
+		if instance:IsA("BasePart") then
+			tagPart(instance)
+		end
+	end
+end
+
+local function onPlayerAdded(player: Player)
+	player.CharacterAdded:Connect(onCharacterAdded)
+
+	if player.Character then
+		onCharacterAdded(player.Character)
+	end
+end
+
+safePlayerAdded(onPlayerAdded)
+
+Code Blaster:
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local Constants = require(ReplicatedStorage.Blaster.Constants)
+local validateInstance = require(ServerScriptService.Utility.TypeValidation.validateInstance)
+local validateShootArguments = require(script.validateShootArguments)
+local validateShot = require(script.validateShot)
+local validateTag = require(script.validateTag)
+local validateReload = require(script.validateReload)
+local getRayDirections = require(ReplicatedStorage.Blaster.Utility.getRayDirections)
+local castRays = require(ReplicatedStorage.Blaster.Utility.castRays)
+
+local remotes = ReplicatedStorage.Blaster.Remotes
+local shootRemote = remotes.Shoot
+local reloadRemote = remotes.Reload
+local replicateShotRemote = remotes.ReplicateShot
+
+local events = ServerScriptService.Blaster.Events
+local taggedEvent = events.Tagged
+local eliminatedEvent = events.Eliminated
+
+local function onShootEvent(
+	player: Player,
+	timestamp: number,
+	blaster: Tool,
+	origin: CFrame,
+	tagged: { [string]: Humanoid }
+)
+	-- Validate the received arguments
+	if not validateShootArguments(timestamp, blaster, origin, tagged) then
+		return
+	end
+
+	-- Validate that the player can make this shot
+	if not validateShot(player, timestamp, blaster, origin) then
+		return
+	end
+
+	local spread = blaster:GetAttribute(Constants.SPREAD_ATTRIBUTE)
+	local raysPerShot = blaster:GetAttribute(Constants.RAYS_PER_SHOT_ATTRIBUTE)
+	local range = blaster:GetAttribute(Constants.RANGE_ATTRIBUTE)
+	local rayRadius = blaster:GetAttribute(Constants.RAY_RADIUS_ATTRIBUTE)
+	local damage = blaster:GetAttribute(Constants.DAMAGE_ATTRIBUTE)
+
+	-- Subtract ammo
+	local ammo = blaster:GetAttribute(Constants.AMMO_ATTRIBUTE)
+	blaster:SetAttribute(Constants.AMMO_ATTRIBUTE, ammo - 1)
+
+	-- The timestamp that was passed by the client also serves as the seed for the blaster's random spread.
+	-- This allows us to recalculate the spread accurately on the server relative to the look direction, rather than simply
+	-- accepting a direction or directions from the client.
+	local spreadAngle = math.rad(spread)
+	local rayDirections = getRayDirections(origin, raysPerShot, spreadAngle, timestamp)
+	for index, direction in rayDirections do
+		rayDirections[index] = direction * range
+	end
+	-- Raycast against static geometry only
+	local rayResults = castRays(player, origin.Position, rayDirections, rayRadius, true)
+
+	-- Validate hits
+	for indexString, taggedHumanoid in tagged do
+		-- The tagged table contains a client-reported list of the humanoids hit by each of the rays that was fired.
+		-- Strings are used for the indices since non-contiguous arrays do not get passed over the network correctly.
+		-- (This may be non-contiguous in the case of firing a shotgun, where not all of the rays hit a target)
+		-- For each humanoid that the client reports it tagged, we'll validate against the ray that was recast on the server.
+		local index = tonumber(indexString)
+		if not index then
+			continue
+		end
+		local rayResult = rayResults[index]
+		if not rayResults[index] then
+			continue
+		end
+		local rayDirection = rayDirections[index]
+		if not rayDirection then
+			continue
+		end
+
+		-- Validate that the player is able to tag this humanoid based on the server raycast
+		if not validateTag(player, taggedHumanoid, origin.Position, rayDirection, rayResult) then
+			continue
+		end
+
+		rayResult.taggedHumanoid = taggedHumanoid
+
+		-- Align the rayResult position to the tagged humanoid. This is necessary so that when we replicate
+		-- this shot to the other clients they don't see lasers going through characters they should be hitting.
+		local model = taggedHumanoid:FindFirstAncestorOfClass("Model")
+		if model then
+			local modelPosition = model:GetPivot().Position
+			local distance = (modelPosition - origin.Position).Magnitude
+			rayResult.position = origin.Position + rayDirection.Unit * distance
+		end
+
+		if taggedHumanoid.Health <= 0 then
+			continue
+		end
+
+		-- Apply damage and fire any relevant events
+		taggedHumanoid:TakeDamage(damage)
+		taggedEvent:Fire(player, taggedHumanoid, damage)
+
+		if taggedHumanoid.Health <= 0 then
+			eliminatedEvent:Fire(player, taggedHumanoid, damage)
+		end
+	end
+
+	-- Apply physics impulse
+	-- This is the most straightforward way to do this, although there will be some latency since the impulse is being applied on the server
+	local force = blaster:GetAttribute(Constants.UNANCHORED_IMPULSE_FORCE_ATTRIBUTE)
+	if force ~= 0 then
+		for index, rayResult in rayResults do
+			-- We don't want to apply impulses to characters, so we'll skip if we tagged a humanoid
+			if rayResult.taggedHumanoid then
+				return
+			end
+
+			if rayResult.instance and rayResult.instance:IsA("BasePart") and not rayResult.instance.Anchored then
+				local direction = rayDirections[index]
+				local impulse = direction * force
+				rayResult.instance:ApplyImpulseAtPosition(impulse, rayResult.position)
+			end
+		end
+	end
+
+	-- Replicate shot to other players
+	for _, otherPlayer in Players:GetPlayers() do
+		if otherPlayer == player then
+			continue
+		end
+
+		replicateShotRemote:FireClient(otherPlayer, blaster, origin.Position, rayResults)
+	end
+end
+
+local function onReloadEvent(player: Player, blaster: Tool)
+	-- Validate the received argument
+	if not validateInstance(blaster, "Tool") then
+		return
+	end
+
+	-- Make sure the player is able to reload this blaster
+	if not validateReload(player, blaster) then
+		return
+	end
+
+	local reloadTime = blaster:GetAttribute(Constants.RELOAD_TIME_ATTRIBUTE)
+	local magazineSize = blaster:GetAttribute(Constants.MAGAZINE_SIZE_ATTRIBUTE)
+
+	local character = player.Character
+	blaster:SetAttribute(Constants.RELOADING_ATTRIBUTE, true)
+
+	local reloadTask
+	local ancestryChangedConnection
+
+	reloadTask = task.delay(reloadTime, function()
+		blaster:SetAttribute(Constants.AMMO_ATTRIBUTE, magazineSize)
+		blaster:SetAttribute(Constants.RELOADING_ATTRIBUTE, false)
+		ancestryChangedConnection:Disconnect()
+	end)
+
+	ancestryChangedConnection = blaster.AncestryChanged:Connect(function()
+		if blaster.Parent ~= character then
+			blaster:SetAttribute(Constants.RELOADING_ATTRIBUTE, false)
+
+			task.cancel(reloadTask)
+			ancestryChangedConnection:Disconnect()
+		end
+	end)
+end
+
+local function initialize()
+	shootRemote.OnServerEvent:Connect(onShootEvent)
+	reloadRemote.OnServerEvent:Connect(onReloadEvent)
+end
+
+initialize()
+
+Code validateReload:
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Constants = require(ReplicatedStorage.Blaster.Constants)
+
+local function validateReload(player: Player, blaster: Tool): boolean
+	local character = player.Character
+	if not character then
+		return false
+	end
+
+	if blaster.Parent ~= character then
+		return false
+	end
+
+	if blaster:GetAttribute(Constants.RELOADING_ATTRIBUTE) then
+		return false
+	end
+
+	return true
+end
+
+return validateReload
+
+Code validateShootArguments:
+
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local validateInstance = require(ServerScriptService.Utility.TypeValidation.validateInstance)
+local validateNumber = require(ServerScriptService.Utility.TypeValidation.validateNumber)
+local validateCFrame = require(ServerScriptService.Utility.TypeValidation.validateCFrame)
+local validateSimpleTable = require(ServerScriptService.Utility.TypeValidation.validateSimpleTable)
+
+local function taggedValidator(instance: any): boolean
+	return validateInstance(instance, "Humanoid")
+end
+
+local function validateShootArguments(
+	timestamp: number,
+	blaster: Tool,
+	origin: CFrame,
+	tagged: { [string]: Humanoid }
+): boolean
+	if not validateNumber(timestamp) then
+		return false
+	end
+	if not validateInstance(blaster, "Tool") then
+		return false
+	end
+	if not validateCFrame(origin) then
+		return false
+	end
+	if not validateSimpleTable(tagged, "string", taggedValidator) then
+		return false
+	end
+
+	return true
+end
+
+return validateShootArguments
+
+Code validateShot:
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local Constants = require(ReplicatedStorage.Blaster.Constants)
+
+local TIMESTAMP_BUFFER_CONSTANT = 1
+local POSITION_BUFFER_CONSTANT = 5
+local POSITION_BUFFER_FACTOR = 0.4
+
+local function validateShot(player: Player, timestamp: number, blaster: Tool, origin: CFrame): boolean
+	-- Validate timestamp
+	local now = Workspace:GetServerTimeNow()
+	if timestamp > now then
+		return false
+	end
+	if timestamp < now - TIMESTAMP_BUFFER_CONSTANT then
+		return false
+	end
+
+	-- Make sure the character exists, is alive, and has a PrimaryPart
+	local character = player.Character
+	if not character then
+		return false
+	end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return false
+	end
+	if humanoid.Health <= 0 then
+		return false
+	end
+	local primaryPart = character.PrimaryPart
+	if not primaryPart then
+		return false
+	end
+
+	-- Make sure the blaster is equipped
+	if blaster.Parent ~= character then
+		return false
+	end
+
+	-- Make sure the blaster is not being reloaded
+	local isReloading = blaster:GetAttribute(Constants.RELOADING_ATTRIBUTE)
+	if isReloading then
+		return false
+	end
+
+	-- Make sure the blaster has enough ammo
+	local ammo = blaster:GetAttribute(Constants.AMMO_ATTRIBUTE)
+	if ammo <= 0 then
+		return false
+	end
+
+	-- Make sure the origin position is within a reasonable distance from the character
+	local distance = (primaryPart.Position - origin.Position).Magnitude
+	local maxDistance = POSITION_BUFFER_CONSTANT + primaryPart.AssemblyLinearVelocity.Magnitude * POSITION_BUFFER_FACTOR
+	if distance > maxDistance then
+		return false
+	end
+
+	return true
+end
+
+return validateShot
+
+Code validateTag
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local castRays = require(ReplicatedStorage.Blaster.Utility.castRays)
+local canPlayerDamageHumanoid = require(ReplicatedStorage.Blaster.Utility.canPlayerDamageHumanoid)
+
+local DIRECTION_BUFFER_CONSTANT = 10
+local WALL_DISTANCE_BUFFER_CONSTANT = 5
+
+local function validateTag(
+	player: Player,
+	taggedHumanoid: Humanoid,
+	position: Vector3,
+	direction: Vector3,
+	rayResult: castRays.RayResult
+): boolean
+	-- Make sure the player is actually allowed to damage this humanoid. No team killing!
+	if not canPlayerDamageHumanoid(player, taggedHumanoid) then
+		return false
+	end
+
+	local character = taggedHumanoid:FindFirstAncestorOfClass("Model")
+	if not character then
+		return false
+	end
+
+	local pivot = character:GetPivot()
+	local characterOffset = pivot.Position - position
+	local characterDistance = characterOffset.Magnitude
+	local rayDistance = (position - rayResult.position).Magnitude
+
+	-- If the server's version of the ray hits static geometry before the player, then we know the shot
+	-- the client reported could not be made.
+	if rayDistance < characterDistance - WALL_DISTANCE_BUFFER_CONSTANT then
+		return false
+	end
+
+	-- In order to make sure that the ray is actually aiming within a certain distance of the character,
+	-- we'll calculate a maximum angle based on our DIRECTION_BUFFER_CONSTANT.
+	-- DIRECTION_BUFFER_CONSTANT is that maximum amount of studs away from the character that the ray can aim.
+	-- atan(DIRECTION_BUFFER_CONSTANT / characterDistance) will give us the maximum angle based on how far away the character is.
+	--[[
+		◎───y───
+		▲     /
+		│    /
+		x   /
+		│  /
+		│θ/
+		│/
+
+		x = characterDistance
+		y = DIRECTION_BUFFER_CONSTANT
+		θ = atan(y/x)
+	]]
+
+	local maxAngle = math.atan(DIRECTION_BUFFER_CONSTANT / characterDistance)
+	-- Check what angle the ray is actually aiming relative to the character and make sure it's within our maximum.
+	-- This will stop a client from passing in arbitrary humanoids, only allowing them to damage what they could
+	-- conceivably be aiming at.
+	local angle = characterOffset:Angle(direction)
+	if angle > maxAngle then
+		return false
+	end
+
+	return true
+end
+
+return validateTag
+
+Code validateCFrame:
+
+local validateVector3 = require(script.Parent.validateVector3)
+
+local function validateCFrame(cframe: CFrame): boolean
+	-- Make sure this is actually a CFrame
+	if typeof(cframe) ~= "CFrame" then
+		return false
+	end
+
+	if not validateVector3(cframe.Position) then
+		return false
+	end
+
+	if not validateVector3(cframe.LookVector) then
+		return false
+	end
+
+	return true
+end
+
+return validateCFrame
+
+Code validateInstance:
+
+--[[
+	Ensures the instance is not an 'imposter' and is of the expected class.
+
+	In cases where the server is expecting an instance, exploiters can pass a table with keys
+	that mimic the instance's properties but set to whatever they want.
+
+	e.g.
+	local fakePart = {
+		Position = Vector3.new()
+	}
+
+	remoteExpectingPart:FireServer(fakePart)
+
+	It is unsafe for the server to blindly accept the position of this fake part without
+	checking it is a valid instance first.
+]]
+
+local function validateInstance(instance: Instance, expectedClass: string): boolean
+	if typeof(instance) ~= "Instance" then
+		return false
+	end
+
+	return instance:IsA(expectedClass)
+end
+
+return validateInstance
+
+Code validateNumber:
+
+local function validateNumber(number: number): boolean
+	-- Make sure this is actually a number
+	if typeof(number) ~= "number" then
+		return false
+	end
+
+	-- Make sure the number is not NaN
+	if number ~= number then
+		return false
+	end
+
+	return true
+end
+
+return validateNumber
+
+Code validateSimpleTable:
+
+local function validateSimpleTable(tbl: { [any]: any }, keyType: string, validator: (any) -> boolean): boolean
+	-- Make sure this is actually a table
+	if typeof(tbl) ~= "table" then
+		return false
+	end
+
+	-- Validate all keys and values
+	for key, value in tbl do
+		if typeof(key) ~= keyType then
+			return false
+		end
+
+		if not validator(value) then
+			return false
+		end
+	end
+
+	return true
+end
+
+return validateSimpleTable
+
+Code validateVector3:
+
+local function validateVector3(vector3: Vector3): boolean
+	-- Make sure this is actually a Vector3
+	if typeof(vector3) ~= "Vector3" then
+		return false
+	end
+
+	-- Make sure the vector3 does not contain any NaN components
+	if vector3 ~= vector3 then
+		return false
+	end
+
+	return true
+end
+
+return validateVector3
+
+Code Targets:
+
+local CollectionService = game:GetService("CollectionService")
+
+local TARGET_TAG = "Target"
+local RESPAWN_TIME = 3
+
+local function onTargetAdded(target: Instance)
+	-- Non-player targets should still have a humanoid in them so they can take damage
+	local humanoid = target:FindFirstChildOfClass("Humanoid")
+	assert(humanoid, `{target:GetFullName()} is missing a humanoid!`)
+
+	local respawning = false
+	humanoid.HealthChanged:Connect(function(health: number)
+		if respawning then
+			return
+		end
+
+		if health <= 0 then
+			respawning = true
+			task.wait(RESPAWN_TIME)
+			humanoid.Health = humanoid.MaxHealth
+			respawning = false
+		end
+	end)
+end
+
+local function initialize()
+	CollectionService:GetInstanceAddedSignal(TARGET_TAG):Connect(onTargetAdded)
+
+	for _, target in CollectionService:GetTagged(TARGET_TAG) do
+		task.spawn(onTargetAdded, target)
+	end
+end
+
+initialize()
