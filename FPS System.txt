@@ -2181,9 +2181,7 @@ local MOVEMENT_CONFIG = {
 	SLIDE_DURATION = 1,
 	SLIDE_BOOST_MULTIPLIER = 3,
 	SLIDE_HEIGHT_REDUCTION = 0.3,
-	SLIDE_DECAY_RATE = 0.6,
-	LEAN_ANGLE = 20, -- Maximum lean angle in degrees
-	LEAN_HITBOX_REDUCTION = 0.7 -- Hitbox width multiplier when leaning
+	SLIDE_DECAY_RATE = 0.6
 }
 
 function MovementController.new(character)
@@ -2195,8 +2193,6 @@ function MovementController.new(character)
 		isSliding = false,
 		defaultWalkSpeed = character:WaitForChild("Humanoid").WalkSpeed,
 		defaultHipHeight = character:WaitForChild("Humanoid").HipHeight,
-		originalHitboxSize = character:WaitForChild("HumanoidRootPart").Size,
-		currentLeanAngle = 0,
 		connections = {}
 	}, MovementController)
 
@@ -2205,7 +2201,7 @@ function MovementController.new(character)
 end
 
 function MovementController:initialize()
-	-- Setup input handling for running, sliding, and leaning
+	-- Setup input handling
 	table.insert(self.connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
 		self:handleInputBegan(input)
@@ -2222,20 +2218,12 @@ function MovementController:handleInputBegan(input)
 		self:startRunning()
 	elseif input.KeyCode == Enum.KeyCode.LeftControl and self.isRunning then
 		self:startSlide()
-	elseif input.KeyCode == Enum.KeyCode.Q then
-		self:setLeanAngle(-MOVEMENT_CONFIG.LEAN_ANGLE)
-	elseif input.KeyCode == Enum.KeyCode.E then
-		self:setLeanAngle(MOVEMENT_CONFIG.LEAN_ANGLE)
 	end
 end
 
 function MovementController:handleInputEnded(input)
 	if input.KeyCode == Enum.KeyCode.LeftShift then
 		self:stopRunning()
-	elseif input.KeyCode == Enum.KeyCode.LeftControl then
-		self:endSlide()
-	elseif input.KeyCode == Enum.KeyCode.Q or input.KeyCode == Enum.KeyCode.E then
-		self:setLeanAngle(0)
 	end
 end
 
@@ -2251,6 +2239,7 @@ function MovementController:stopRunning()
 	end
 end
 
+-- เพิ่มฟังก์ชัน getSlideDirection
 function MovementController:getSlideDirection()
 	local moveVector = Vector3.new()
 	local camera = workspace.CurrentCamera
@@ -2276,17 +2265,18 @@ function MovementController:getSlideDirection()
 	return moveVector.Magnitude > 0 and moveVector.Unit or flatLook
 end
 
+-- ปรับฟังก์ชัน startSlide ให้รองรับการสไลด์หลายทิศทาง
 function MovementController:startSlide()
 	if self.isSliding then return end
 
 	self.isSliding = true
-	local slideDirection = self:getSlideDirection() -- คำนวณทิศทางการสไลด์
+	local slideDirection = self:getSlideDirection() -- ใช้ getSlideDirection เพื่อกำหนดทิศทาง
 	local initialVelocity = slideDirection * (self.humanoid.WalkSpeed * MOVEMENT_CONFIG.SLIDE_BOOST_MULTIPLIER)
 
-	-- ลดขนาด Hitbox
+	-- Reduce character height
 	self.humanoid.HipHeight = self.defaultHipHeight * MOVEMENT_CONFIG.SLIDE_HEIGHT_REDUCTION
 
-	-- ใช้ฟิสิกส์สไลด์
+	-- Handle slide physics
 	local startTime = tick()
 	local slideConnection
 	slideConnection = RunService.Heartbeat:Connect(function()
@@ -2308,22 +2298,6 @@ function MovementController:endSlide()
 	self.humanoid.WalkSpeed = self.isRunning and 
 		(self.defaultWalkSpeed * MOVEMENT_CONFIG.RUN_SPEED_MULTIPLIER) or 
 		self.defaultWalkSpeed
-end
-
-function MovementController:setLeanAngle(targetAngle)
-	self.currentLeanAngle = targetAngle
-
-	-- ปรับขนาด Hitbox ระหว่างการ Lean
-	local hitboxScale = targetAngle == 0 and 1 or MOVEMENT_CONFIG.LEAN_HITBOX_REDUCTION
-	self.rootPart.Size = Vector3.new(
-		self.originalHitboxSize.X * hitboxScale,
-		self.originalHitboxSize.Y,
-		self.originalHitboxSize.Z
-	)
-
-	-- หมุน HumanoidRootPart
-	local currentCFrame = self.rootPart.CFrame
-	self.rootPart.CFrame = currentCFrame * CFrame.Angles(0, 0, math.rad(targetAngle))
 end
 
 function MovementController:destroy()
