@@ -2239,11 +2239,38 @@ function MovementController:stopRunning()
 	end
 end
 
+-- เพิ่มฟังก์ชัน getSlideDirection
+function MovementController:getSlideDirection()
+	local moveVector = Vector3.new()
+	local camera = workspace.CurrentCamera
+	local cameraLook = camera.CFrame.LookVector
+	local flatLook = Vector3.new(cameraLook.X, 0, cameraLook.Z).Unit
+	local rightVector = flatLook:Cross(Vector3.new(0, 1, 0))
+
+	-- Combine movement inputs relative to camera direction
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+		moveVector = moveVector + flatLook
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+		moveVector = moveVector - flatLook
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+		moveVector = moveVector + rightVector
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+		moveVector = moveVector - rightVector
+	end
+
+	-- Return normalized movement vector or default to look direction
+	return moveVector.Magnitude > 0 and moveVector.Unit or flatLook
+end
+
+-- ปรับฟังก์ชัน startSlide ให้รองรับการสไลด์หลายทิศทาง
 function MovementController:startSlide()
 	if self.isSliding then return end
 
 	self.isSliding = true
-	local slideDirection = self.rootPart.CFrame.LookVector
+	local slideDirection = self:getSlideDirection() -- ใช้ getSlideDirection เพื่อกำหนดทิศทาง
 	local initialVelocity = slideDirection * (self.humanoid.WalkSpeed * MOVEMENT_CONFIG.SLIDE_BOOST_MULTIPLIER)
 
 	-- Reduce character height
