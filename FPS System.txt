@@ -2181,7 +2181,9 @@ local MOVEMENT_CONFIG = {
 	SLIDE_DURATION = 1,
 	SLIDE_BOOST_MULTIPLIER = 3,
 	SLIDE_HEIGHT_REDUCTION = 0.3,
-	SLIDE_DECAY_RATE = 0.6
+	SLIDE_DECAY_RATE = 0.6,
+	GROUND_CHECK_DISTANCE = 1.5, -- Distance to check for ground
+	SLIDE_AIR_DECAY = 0.8, -- Multiplier for slide speed while airborne
 }
 
 function MovementController.new(character)
@@ -2193,6 +2195,7 @@ function MovementController.new(character)
 		isSliding = false,
 		defaultWalkSpeed = character:WaitForChild("Humanoid").WalkSpeed,
 		defaultHipHeight = character:WaitForChild("Humanoid").HipHeight,
+		isGrounded = false,
 		connections = {}
 	}, MovementController)
 
@@ -2201,7 +2204,7 @@ function MovementController.new(character)
 end
 
 function MovementController:initialize()
-	-- Setup input handling
+	-- Setup input handling for running, sliding
 	table.insert(self.connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
 		self:handleInputBegan(input)
@@ -2211,6 +2214,24 @@ function MovementController:initialize()
 		if gameProcessed then return end
 		self:handleInputEnded(input)
 	end))
+
+	-- Add ground check update
+	table.insert(self.connections, RunService.Heartbeat:Connect(function()
+		self:updateGroundState()
+	end))
+end
+
+-- Check if the player is grounded using raycast
+function MovementController:updateGroundState()
+	local rayOrigin = self.rootPart.Position
+	local rayDirection = Vector3.new(0, -MOVEMENT_CONFIG.GROUND_CHECK_DISTANCE, 0)
+
+	local raycastParams = RaycastParams.new()
+	raycastParams.FilterType = Enum.RaycastFilterType.Blacklist
+	raycastParams.FilterDescendantsInstances = {self.character}
+
+	local raycastResult = workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+	self.isGrounded = raycastResult ~= nil
 end
 
 function MovementController:handleInputBegan(input)
@@ -2239,7 +2260,7 @@ function MovementController:stopRunning()
 	end
 end
 
--- เพิ่มฟังก์ชัน getSlideDirection
+-- Get the slide direction based on player input
 function MovementController:getSlideDirection()
 	local moveVector = Vector3.new()
 	local camera = workspace.CurrentCamera
@@ -2265,26 +2286,47 @@ function MovementController:getSlideDirection()
 	return moveVector.Magnitude > 0 and moveVector.Unit or flatLook
 end
 
--- ปรับฟังก์ชัน startSlide ให้รองรับการสไลด์หลายทิศทาง
+-- Start sliding
 function MovementController:startSlide()
-	if self.isSliding then return end
+	if self.isSliding or not self.isGrounded then return end
 
 	self.isSliding = true
-	local slideDirection = self:getSlideDirection() -- ใช้ getSlideDirection เพื่อกำหนดทิศทาง
+	local slideDirection = self:getSlideDirection()
 	local initialVelocity = slideDirection * (self.humanoid.WalkSpeed * MOVEMENT_CONFIG.SLIDE_BOOST_MULTIPLIER)
 
-	-- Reduce character height
 	self.humanoid.HipHeight = self.defaultHipHeight * MOVEMENT_CONFIG.SLIDE_HEIGHT_REDUCTION
 
-	-- Handle slide physics
 	local startTime = tick()
 	local slideConnection
-	slideConnection = RunService.Heartbeat:Connect(function()
+
+	slideConnection = RunService.Heartbeat:Connect(function(deltaTime)
+		if not self.isSliding then
+			slideConnection:Disconnect()
+			return
+		end
+
 		local elapsed = tick() - startTime
 		local alpha = math.clamp(1 - (elapsed / MOVEMENT_CONFIG.SLIDE_DURATION), 0, 1)
 
+		-- Check if grounded
+		local isGrounded = self:isPlayerGrounded()
+
 		if alpha > 0 then
-			self.rootPart.Velocity = slideDirection * (initialVelocity.Magnitude * alpha)
+			local currentVelocity = self.rootPart.Velocity
+
+			-- Calculate new velocity
+			local targetVelocity = slideDirection * (initialVelocity.Magnitude * alpha)
+			if not isGrounded then
+				-- Reduce horizontal velocity in air while preserving vertical velocity
+				targetVelocity = targetVelocity * MOVEMENT_CONFIG.SLIDE_AIR_DECAY
+			end
+
+			-- Apply horizontal velocity while preserving vertical velocity
+			self.rootPart.Velocity = Vector3.new(
+				targetVelocity.X,
+				currentVelocity.Y, -- Preserve vertical velocity for gravity
+				targetVelocity.Z
+			)
 		else
 			self:endSlide()
 			slideConnection:Disconnect()
@@ -2293,8 +2335,12 @@ function MovementController:startSlide()
 end
 
 function MovementController:endSlide()
+	if not self.isSliding then return end
+
 	self.isSliding = false
 	self.humanoid.HipHeight = self.defaultHipHeight
+
+	-- Reset walk speed based on running state
 	self.humanoid.WalkSpeed = self.isRunning and 
 		(self.defaultWalkSpeed * MOVEMENT_CONFIG.RUN_SPEED_MULTIPLIER) or 
 		self.defaultWalkSpeed
