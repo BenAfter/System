@@ -16,6 +16,7 @@ ReplicatedStorage
 │     │       ├──  CharacterAnimationController (ModuleScript)
 │     │       ├──  GuiController (ModuleScript)
 │     │       ├──  InputCategorizer (ModuleScript)
+│     │       ├──  MovementController (ModuleScript)
 │     │       ├──  TouchInputController (ModuleScript)
 │     │       └──  ViewModelController (ModuleScript)
 │     ├── Utility (Folder)
@@ -55,6 +56,9 @@ ServerScriptService
 │              ├──  validateSimpleTable (ModuleScript)
 │              └──  validateVector3 (ModuleScript)
 └── Targets (Scrips)
+StarterPlayer
+└── StarterPlayerScripts (Folder)
+      └── InitializeMovement (LocalScript)
 
 Code impactEffect:
 
@@ -2158,3 +2162,143 @@ local function initialize()
 end
 
 initialize()
+
+Code MovementController:
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+
+-- Import existing modules
+local Constants = require(ReplicatedStorage.Blaster.Constants)
+
+local MovementController = {}
+MovementController.__index = MovementController
+
+-- Movement configuration
+local MOVEMENT_CONFIG = {
+	RUN_SPEED_MULTIPLIER = 1.5,
+	SLIDE_DURATION = 1,
+	SLIDE_BOOST_MULTIPLIER = 3,
+	SLIDE_HEIGHT_REDUCTION = 0.3,
+	SLIDE_DECAY_RATE = 0.6
+}
+
+function MovementController.new(character)
+	local self = setmetatable({
+		character = character,
+		humanoid = character:WaitForChild("Humanoid"),
+		rootPart = character:WaitForChild("HumanoidRootPart"),
+		isRunning = false,
+		isSliding = false,
+		defaultWalkSpeed = character:WaitForChild("Humanoid").WalkSpeed,
+		defaultHipHeight = character:WaitForChild("Humanoid").HipHeight,
+		connections = {}
+	}, MovementController)
+
+	self:initialize()
+	return self
+end
+
+function MovementController:initialize()
+	-- Setup input handling
+	table.insert(self.connections, UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		self:handleInputBegan(input)
+	end))
+
+	table.insert(self.connections, UserInputService.InputEnded:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		self:handleInputEnded(input)
+	end))
+end
+
+function MovementController:handleInputBegan(input)
+	if input.KeyCode == Enum.KeyCode.LeftShift then
+		self:startRunning()
+	elseif input.KeyCode == Enum.KeyCode.LeftControl and self.isRunning then
+		self:startSlide()
+	end
+end
+
+function MovementController:handleInputEnded(input)
+	if input.KeyCode == Enum.KeyCode.LeftShift then
+		self:stopRunning()
+	end
+end
+
+function MovementController:startRunning()
+	self.isRunning = true
+	self.humanoid.WalkSpeed = self.defaultWalkSpeed * MOVEMENT_CONFIG.RUN_SPEED_MULTIPLIER
+end
+
+function MovementController:stopRunning()
+	self.isRunning = false
+	if not self.isSliding then
+		self.humanoid.WalkSpeed = self.defaultWalkSpeed
+	end
+end
+
+function MovementController:startSlide()
+	if self.isSliding then return end
+
+	self.isSliding = true
+	local slideDirection = self.rootPart.CFrame.LookVector
+	local initialVelocity = slideDirection * (self.humanoid.WalkSpeed * MOVEMENT_CONFIG.SLIDE_BOOST_MULTIPLIER)
+
+	-- Reduce character height
+	self.humanoid.HipHeight = self.defaultHipHeight * MOVEMENT_CONFIG.SLIDE_HEIGHT_REDUCTION
+
+	-- Handle slide physics
+	local startTime = tick()
+	local slideConnection
+	slideConnection = RunService.Heartbeat:Connect(function()
+		local elapsed = tick() - startTime
+		local alpha = math.clamp(1 - (elapsed / MOVEMENT_CONFIG.SLIDE_DURATION), 0, 1)
+
+		if alpha > 0 then
+			self.rootPart.Velocity = slideDirection * (initialVelocity.Magnitude * alpha)
+		else
+			self:endSlide()
+			slideConnection:Disconnect()
+		end
+	end)
+end
+
+function MovementController:endSlide()
+	self.isSliding = false
+	self.humanoid.HipHeight = self.defaultHipHeight
+	self.humanoid.WalkSpeed = self.isRunning and 
+		(self.defaultWalkSpeed * MOVEMENT_CONFIG.RUN_SPEED_MULTIPLIER) or 
+		self.defaultWalkSpeed
+end
+
+function MovementController:destroy()
+	for _, connection in ipairs(self.connections) do
+		connection:Disconnect()
+	end
+	table.clear(self.connections)
+end
+
+return MovementController
+
+Code InitializeMovement:
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local MovementController = require(ReplicatedStorage.Blaster.Scripts.MovementController)
+
+local function onCharacterAdded(character)
+	local movementController = MovementController.new(character)
+
+	character.Destroying:Once(function()
+		movementController:destroy()
+	end)
+end
+
+local player = Players.LocalPlayer
+player.CharacterAdded:Connect(onCharacterAdded)
+if player.Character then
+	onCharacterAdded(player.Character)
+end
