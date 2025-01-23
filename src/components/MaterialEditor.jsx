@@ -26,6 +26,25 @@ const MaterialEditor = ({ open, onClose, materials, onMaterialUpdate }) => {
   const [costs, setCosts] = useState({});
   const [layerCosts, setLayerCosts] = useState({});
 
+  const handlePresetSelect = (materialName, preset) => {
+    onMaterialUpdate(materialName, {
+      color: preset.color,
+      cost: preset.defaultCost
+    });
+
+    setCosts(prev => ({
+      ...prev,
+      [materialName]: preset.defaultCost
+    }));
+
+    if (preset.layers) {
+      setLayerCosts(prev => ({
+        ...prev,
+        [preset.name]: preset.defaultCost
+      }));
+    }
+  };
+
   const handleLayerUpdate = (materialName, layers) => {
     const totalCost = calculateLayeredCost(materialName, layers);
     handleCostChange(materialName, totalCost);
@@ -107,6 +126,12 @@ const MaterialEditor = ({ open, onClose, materials, onMaterialUpdate }) => {
                   <MaterialLayer 
                     onLayerUpdate={(layers) => handleLayerUpdate(material.name, layers)}
                   />
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <SketchPicker
+                      color={material.color}
+                      onChange={(color) => onMaterialUpdate(material.name, { color: color.rgb })}
+                    />
+                  </Box>
                   <Divider sx={{ my: 2 }} />
                 </ListItem>
               ))}
