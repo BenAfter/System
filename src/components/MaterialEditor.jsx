@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Dialog, 
   DialogTitle, 
@@ -20,11 +20,55 @@ import MaterialLayer from './MaterialLayer';
 import MaterialPresets from './MaterialPresets';
 import CostBreakdown from './CostBreakdown';
 
-const MaterialEditor = ({ open, onClose, materials, onMaterialUpdate }) => {
+const MaterialEditor = ({ open, onClose, materials, selectedPart, onMaterialUpdate }) => {
   const [activeTab, setActiveTab] = useState(0);
   const [showCostBreakdown, setShowCostBreakdown] = useState(false);
   const [costs, setCosts] = useState({});
   const [layerCosts, setLayerCosts] = useState({});
+  const [materialCosts, setMaterialCosts] = useState([]);
+  const [costUpdateTimer, setCostUpdateTimer] = useState(null);
+
+  const calculateMaterialCosts = (materials, layerCosts) => {
+    return materials.map(material => {
+      const baseCost = material.area * (layerCosts[material.name] || 0);
+      const layersCost = (material.layers || []).reduce((total, layer) => {
+        const layerArea = material.area;
+        const layerVolume = layerArea * (layer.thickness / 1000);
+        const materialCostPerUnit = layerCosts[layer.material] || 0;
+        return total + (layerVolume * materialCostPerUnit);
+      }, 0);
+
+      return {
+        name: material.name,
+        area: material.area,
+        baseCost,
+        layersCost,
+        totalCost: baseCost + layersCost
+      };
+    });
+  };
+
+  const updateCostsInRealTime = () => {
+    if (costUpdateTimer) {
+      clearTimeout(costUpdateTimer);
+    }
+
+    const timer = setTimeout(() => {
+      const costs = calculateMaterialCosts(materials, layerCosts);
+      setMaterialCosts(costs);
+    }, 100);
+
+    setCostUpdateTimer(timer);
+  };
+
+  useEffect(() => {
+    updateCostsInRealTime();
+    return () => {
+      if (costUpdateTimer) {
+        clearTimeout(costUpdateTimer);
+      }
+    };
+  }, [materials, layerCosts]);
 
   const handlePresetSelect = (materialName, preset) => {
     onMaterialUpdate(materialName, {
@@ -46,48 +90,20 @@ const MaterialEditor = ({ open, onClose, materials, onMaterialUpdate }) => {
   };
 
   const handleLayerUpdate = (materialName, layers) => {
-    const totalCost = calculateLayeredCost(materialName, layers);
-    handleCostChange(materialName, totalCost);
     onMaterialUpdate(materialName, { layers });
-  };
-
-  const calculateLayeredCost = (materialName, layers) => {
-    return layers.reduce((total, layer) => {
-      const materialCostPerUnit = layerCosts[layer.material] || 0;
-      const layerArea = calculateLayerArea(materialName);
-      const layerVolume = layerArea * (layer.thickness / 1000); // Convert mm to m
-      return total + (materialCostPerUnit * layerVolume);
-    }, 0);
-  };
-
-  const calculateLayerArea = (materialName) => {
-    const material = materials.find(m => m.name === materialName);
-    return material ? material.area : 0;
+    updateCostsInRealTime();
   };
 
   const handleCostChange = (materialName, cost) => {
-    const newCost = parseFloat(cost);
-    setCosts(prev => ({
-      ...prev,
-      [materialName]: newCost
-    }));
-    
-    onMaterialUpdate(materialName, { cost: newCost });
-  };
-
-  const handleLayerCostUpdate = (materialType, costPerUnit) => {
     setLayerCosts(prev => ({
       ...prev,
-      [materialType]: costPerUnit
+      [materialName]: cost
     }));
+    updateCostsInRealTime();
   };
 
   const calculateTotalCost = () => {
-    return materials.reduce((total, material) => {
-      const materialLayers = material.layers || [];
-      const layeredCost = calculateLayeredCost(material.name, materialLayers);
-      return total + layeredCost;
-    }, 0);
+    return materialCosts.reduce((total, material) => total + material.totalCost, 0);
   };
 
   const handleViewBreakdown = () => {
@@ -137,6 +153,28 @@ const MaterialEditor = ({ open, onClose, materials, onMaterialUpdate }) => {
               ))}
             </List>
           )}
+
+          <Box sx={{ mt: 3, px: 2 }}>
+            {materialCosts.map(cost => (
+              <Box key={cost.name} sx={{ mb: 2 }}>
+                <Typography variant="subtitle1">
+                  {cost.name} Cost Breakdown:
+                </Typography>
+                <Typography variant="body2">
+                  Area: {cost.area.toFixed(2)} m² 
+                </Typography>
+                <Typography variant="body2">
+                  Base Cost: ${cost.baseCost.toFixed(2)}
+                </Typography>
+                <Typography variant="body2">
+                  Layers Cost: ${cost.layersCost.toFixed(2)}
+                </Typography>
+                <Typography variant="subtitle2" sx={{ mt: 1 }}>
+                  Total: ${cost.totalCost.toFixed(2)}
+                </Typography>
+              </Box>
+            ))}
+          </Box>
 
           <Box sx={{ mt: 2, p: 2, bgcolor: 'background.paper', borderRadius: 1 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
