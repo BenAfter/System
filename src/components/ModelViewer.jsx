@@ -4,6 +4,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 import { OutlinePass } from 'three/examples/jsm/postprocessing/OutlinePass';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass';
+import { Raycaster, Vector2 } from 'three';
 import ModelControls from './ModelControls';
 import MaterialEditor from './MaterialEditor';
 
@@ -27,9 +28,40 @@ const ModelViewer = ({ modelData }) => {
   const composerRef = useRef(null);
   const outlinePassRef = useRef(null);
   const materialMapRef = useRef(new Map());
+  const raycasterRef = useRef(new Raycaster());
+  const mouseRef = useRef(new Vector2());
+  const meshesRef = useRef(new Map());
+
+  const calculateMeshArea = (geometry) => {
+    let totalArea = 0;
+    const positionAttribute = geometry.getAttribute('position');
+    const indices = geometry.getIndex();
+
+    for (let i = 0; i < indices.count; i += 3) {
+      const a = new THREE.Vector3();
+      const b = new THREE.Vector3();
+      const c = new THREE.Vector3();
+
+      a.fromBufferAttribute(positionAttribute, indices.getX(i));
+      b.fromBufferAttribute(positionAttribute, indices.getX(i + 1));
+      c.fromBufferAttribute(positionAttribute, indices.getX(i + 2));
+
+      const triangleArea = getTriangleArea(a, b, c);
+      totalArea += triangleArea;
+    }
+
+    return totalArea;
+  };
+
+  const getTriangleArea = (a, b, c) => {
+    const ab = new THREE.Vector3().subVectors(b, a);
+    const ac = new THREE.Vector3().subVectors(c, a);
+    const cross = new THREE.Vector3().crossVectors(ab, ac);
+    return cross.length() * 0.5;
+  };
 
   const createModelGeometry = (scene, modelData) => {
-    const { geometry, materials } = modelData;
+    const { geometries, materials } = modelData;
     
     materials.forEach(material => {
       const threeMaterial = new THREE.MeshPhongMaterial({
@@ -39,18 +71,36 @@ const ModelViewer = ({ modelData }) => {
       });
       materialMapRef.current.set(material.name, threeMaterial);
     });
-    setMaterials(materials);
 
-    const vertices = new Float32Array(geometry.vertices);
-    const faces = new Uint32Array(geometry.faces);
-    
-    const bufferGeometry = new THREE.BufferGeometry();
-    bufferGeometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-    bufferGeometry.setIndex(new THREE.BufferAttribute(faces, 1));
-    bufferGeometry.computeVertexNormals();
+    geometries.forEach((geometry, index) => {
+      const vertices = new Float32Array(geometry.vertices);
+      const faces = new Uint32Array(geometry.faces);
+      
+      const bufferGeometry = new THREE.BufferGeometry();
+      bufferGeometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+      bufferGeometry.setIndex(new THREE.BufferAttribute(faces, 1));
+      bufferGeometry.computeVertexNormals();
 
-    const mesh = new THREE.Mesh(bufferGeometry, Array.from(materialMapRef.current.values())[0]);
-    scene.add(mesh);
+      const area = calculateMeshArea(bufferGeometry);
+      const material = materialMapRef.current.get(materials[index].name);
+      const mesh = new THREE.Mesh(bufferGeometry, material);
+      
+      mesh.userData = {
+        ...geometry.metadata,
+        area: area,
+        materialIndex: index
+      };
+
+      meshesRef.current.set(geometry.id, mesh);
+      scene.add(mesh);
+    });
+
+    setMaterials(materials.map((material, index) => ({
+      ...material,
+      area: Array.from(meshesRef.current.values())
+        .filter(mesh => mesh.userData.materialIndex === index)
+        .reduce((total, mesh) => total + mesh.userData.area, 0)
+    })));
 
     const ambientLight = new THREE.AmbientLight(0x404040);
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
@@ -79,6 +129,29 @@ const ModelViewer = ({ modelData }) => {
     
     composerRef.current = composer;
     outlinePassRef.current = outlinePass;
+  };
+
+  const handleMouseMove = (event) => {
+    mouseRef.current.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouseRef.current.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  };
+
+  const handleClick = () => {
+    raycasterRef.current.setFromCamera(mouseRef.current, cameraRef.current);
+    const intersects = raycasterRef.current.intersectObjects(sceneRef.current.children);
+    
+    if (intersects.length > 0) {
+      const selectedObject = intersects[0].object;
+      setSelectedPart(selectedObject);
+      highlightSelectedPart(selectedObject);
+      setIsEditorOpen(true);
+    }
+  };
+
+  const highlightSelectedPart = (part) => {
+    if (outlinePassRef.current) {
+      outlinePassRef.current.selectedObjects = part ? [part] : [];
+    }
   };
 
   const handleMaterialUpdate = (materialName, updates) => {
@@ -122,12 +195,6 @@ const ModelViewer = ({ modelData }) => {
     setIsEditorOpen(true);
   };
 
-  const animate = () => {
-    requestAnimationFrame(animate);
-    controlsRef.current.update();
-    composerRef.current.render();
-  };
-
   useEffect(() => {
     if (!modelData) return;
 
@@ -148,6 +215,15 @@ const ModelViewer = ({ modelData }) => {
 
     setupPostProcessing(scene, camera, renderer);
     createModelGeometry(scene, modelData);
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('click', handleClick);
+
+    const animate = () => {
+      requestAnimationFrame(animate);
+      controls.update();
+      composerRef.current.render();
+    };
     animate();
 
     const handleResize = () => {
@@ -160,6 +236,8 @@ const ModelViewer = ({ modelData }) => {
     window.addEventListener('resize', handleResize);
 
     return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('click', handleClick);
       window.removeEventListener('resize', handleResize);
       mountRef.current.removeChild(renderer.domElement);
       renderer.dispose();
@@ -178,6 +256,7 @@ const ModelViewer = ({ modelData }) => {
         open={isEditorOpen}
         onClose={() => setIsEditorOpen(false)}
         materials={materials}
+        selectedPart={selectedPart}
         onMaterialUpdate={handleMaterialUpdate}
       />
     </div>
