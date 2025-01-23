@@ -15,6 +15,7 @@ import {
   Typography
 } from '@mui/material';
 import { Download, PictureAsPdf } from '@mui/icons-material';
+import { exportToCSV, exportToPDF } from '../utils/exportUtils';
 
 const CostBreakdown = ({ open, onClose, materials, costs }) => {
   const generateReport = () => {
@@ -45,6 +46,14 @@ const CostBreakdown = ({ open, onClose, materials, costs }) => {
 
   const report = generateReport();
   const totalCost = report.reduce((sum, part) => sum + part.totalCost, 0);
+
+  const handleExportCSV = () => {
+    exportToCSV(report);
+  };
+
+  const handleExportPDF = () => {
+    exportToPDF(report, totalCost);
+  };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="lg" fullWidth>
@@ -90,10 +99,19 @@ const CostBreakdown = ({ open, onClose, materials, costs }) => {
             Total Estimated Cost: ${totalCost.toFixed(2)}
           </Typography>
           <Box>
-            <Button startIcon={<Download />} variant="outlined" sx={{ mr: 1 }}>
+            <Button 
+              startIcon={<Download />} 
+              variant="outlined" 
+              sx={{ mr: 1 }}
+              onClick={handleExportCSV}
+            >
               Export CSV
             </Button>
-            <Button startIcon={<PictureAsPdf />} variant="contained">
+            <Button 
+              startIcon={<PictureAsPdf />} 
+              variant="contained"
+              onClick={handleExportPDF}
+            >
               Export PDF
             </Button>
           </Box>
