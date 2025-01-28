@@ -1,22 +1,17 @@
 import React from 'react';
-import {
-  Box,
-  IconButton,
-  Tooltip,
-  Paper
-} from '@mui/material';
+import { Box, IconButton, Tooltip } from '@mui/material';
 import {
   ZoomIn,
   ZoomOut,
   RestartAlt,
   Palette,
-  SaveAlt
+  SaveAlt,
+  Upload
 } from '@mui/icons-material';
 
-const ModelControls = ({ onZoom, onReset, onMaterialEdit, onExport }) => {
+const ModelControls = ({ onZoom, onReset, onMaterialEdit, onSave, onLoad }) => {
   return (
-    <Paper
-      elevation={3}
+    <Box
       sx={{
         position: 'absolute',
         right: 16,
@@ -25,7 +20,10 @@ const ModelControls = ({ onZoom, onReset, onMaterialEdit, onExport }) => {
         display: 'flex',
         flexDirection: 'column',
         gap: 1,
-        p: 1
+        bgcolor: 'background.paper',
+        p: 1,
+        borderRadius: 1,
+        boxShadow: 2
       }}
     >
       <Tooltip title="Zoom In" placement="left">
@@ -46,20 +44,24 @@ const ModelControls = ({ onZoom, onReset, onMaterialEdit, onExport }) => {
         </IconButton>
       </Tooltip>
 
-      <Box sx={{ my: 1, borderTop: 1, borderColor: 'divider' }} />
-
       <Tooltip title="Edit Materials" placement="left">
         <IconButton onClick={onMaterialEdit}>
           <Palette />
         </IconButton>
       </Tooltip>
 
-      <Tooltip title="Export" placement="left">
-        <IconButton onClick={onExport}>
+      <Tooltip title="Save Configuration" placement="left">
+        <IconButton onClick={onSave}>
           <SaveAlt />
         </IconButton>
       </Tooltip>
-    </Paper>
+
+      <Tooltip title="Load Configuration" placement="left">
+        <IconButton onClick={onLoad}>
+          <Upload />
+        </IconButton>
+      </Tooltip>
+    </Box>
   );
 };
 
