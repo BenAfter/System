@@ -1,33 +1,22 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, mockMaterialData } from './utils/testUtils';
 import CostBreakdown from '../components/CostBreakdown';
 
 describe('CostBreakdown', () => {
-  const mockMaterials = [
-    {
-      name: 'wood_oak',
-      area: 2.5,
-      layers: [
-        { material: 'wood', thickness: 18, cost: 800 }
-      ]
-    }
-  ];
-
   const mockCosts = {
-    wood_oak: 800
+    [mockMaterialData.name]: mockMaterialData.defaultCost
   };
 
-  test('displays cost breakdown', () => {
-    render(
+  test('calculates total cost correctly', () => {
+    const { getByText } = render(
       <CostBreakdown
         open={true}
-        materials={mockMaterials}
+        materials={[{ ...mockMaterialData, area: 2.5 }]}
         costs={mockCosts}
         onClose={() => {}}
       />
     );
-
-    expect(screen.getByText('wood_oak')).toBeInTheDocument();
-    expect(screen.getByText('2.50')).toBeInTheDocument();
+    
+    expect(getByText('$250.00')).toBeInTheDocument();
   });
 });
