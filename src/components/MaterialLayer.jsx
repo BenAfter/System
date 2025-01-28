@@ -1,76 +1,106 @@
 import React, { useState } from 'react';
 import {
   Box,
-  Typography,
+  Button,
+  TextField,
   IconButton,
   List,
   ListItem,
-  Button,
-  TextField
+  MenuItem,
+  Select,
+  Typography
 } from '@mui/material';
-import { Add, Remove } from '@mui/icons-material';
+import { Add as AddIcon, Delete as DeleteIcon } from '@mui/icons-material';
+
+const MATERIAL_TYPES = {
+  WOOD: 'wood',
+  METAL: 'metal',
+  PLASTIC: 'plastic',
+  GLASS: 'glass',
+  COMPOSITE: 'composite'
+};
 
 const MaterialLayer = ({ onLayerUpdate }) => {
   const [layers, setLayers] = useState([]);
 
-  const addLayer = () => {
+  const handleAddLayer = () => {
     const newLayer = {
       id: Date.now(),
-      material: '',
-      thickness: 0
+      material: MATERIAL_TYPES.WOOD,
+      thickness: 1,
+      cost: 0
     };
-    setLayers([...layers, newLayer]);
-  };
-
-  const updateLayer = (layerId, field, value) => {
-    const updatedLayers = layers.map(layer => 
-      layer.id === layerId ? { ...layer, [field]: value } : layer
-    );
+    const updatedLayers = [...layers, newLayer];
     setLayers(updatedLayers);
     onLayerUpdate(updatedLayers);
   };
 
-  const removeLayer = (layerId) => {
+  const handleRemoveLayer = (layerId) => {
     const updatedLayers = layers.filter(layer => layer.id !== layerId);
+    setLayers(updatedLayers);
+    onLayerUpdate(updatedLayers);
+  };
+
+  const handleLayerChange = (layerId, field, value) => {
+    const updatedLayers = layers.map(layer => {
+      if (layer.id === layerId) {
+        return { ...layer, [field]: value };
+      }
+      return layer;
+    });
     setLayers(updatedLayers);
     onLayerUpdate(updatedLayers);
   };
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <Typography variant="h6">Material Layers</Typography>
-        <IconButton onClick={addLayer} color="primary">
-          <Add />
-        </IconButton>
-      </Box>
-
+      <Typography variant="subtitle1" gutterBottom>
+        Material Layers
+      </Typography>
       <List>
         {layers.map((layer, index) => (
           <ListItem key={layer.id} sx={{ gap: 2 }}>
-            <TextField
-              label="Material"
+            <Select
+              size="small"
               value={layer.material}
-              onChange={(e) => updateLayer(layer.id, 'material', e.target.value)}
+              onChange={(e) => handleLayerChange(layer.id, 'material', e.target.value)}
+            >
+              {Object.entries(MATERIAL_TYPES).map(([key, value]) => (
+                <MenuItem key={value} value={value}>
+                  {key.charAt(0) + key.slice(1).toLowerCase()}
+                </MenuItem>
+              ))}
+            </Select>
+            <TextField
               size="small"
+              type="number"
+              label="Thickness (mm)"
+              value={layer.thickness}
+              onChange={(e) => handleLayerChange(layer.id, 'thickness', parseFloat(e.target.value))}
+              sx={{ width: 150 }}
             />
             <TextField
-              label="Thickness (mm)"
-              type="number"
-              value={layer.thickness}
-              onChange={(e) => updateLayer(layer.id, 'thickness', e.target.value)}
               size="small"
+              type="number"
+              label="Cost per m³"
+              value={layer.cost}
+              onChange={(e) => handleLayerChange(layer.id, 'cost', parseFloat(e.target.value))}
+              sx={{ width: 150 }}
             />
-            <IconButton onClick={() => removeLayer(layer.id)} color="error">
-              <Remove />
+            <IconButton onClick={() => handleRemoveLayer(layer.id)} color="error">
+              <DeleteIcon />
             </IconButton>
           </ListItem>
         ))}
       </List>
-
-      <Typography variant="body2" sx={{ mt: 1 }}>
-        Total Thickness: {layers.reduce((sum, layer) => sum + Number(layer.thickness), 0)}mm
-      </Typography>
+      <Button
+        startIcon={<AddIcon />}
+        onClick={handleAddLayer}
+        variant="outlined"
+        sx={{ mt: 2 }}
+      >
+        Add Layer
+      </Button>
     </Box>
   );
 };
