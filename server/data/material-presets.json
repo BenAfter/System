@@ -1,0 +1,24 @@
+{
+    "presets": [
+      {
+        "id": "wood_oak",
+        "name": "Oak Wood",
+        "type": "wood",
+        "color": {
+          "r": 139,
+          "g": 69,
+          "b": 19,
+          "a": 1
+        },
+        "defaultCost": 800,
+        "layers": [
+          {
+            "material": "wood",
+            "thickness": 18,
+            "cost": 800
+          }
+        ]
+      }
+    ]
+  }
+  

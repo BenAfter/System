@@ -1,0 +1,35 @@
+{
+    "geometries": [
+      {
+        "id": "frame_001",
+        "vertices": [
+          0.0, 0.0, 0.0,
+          1.0, 0.0, 0.0,
+          1.0, 1.0, 0.0,
+          0.0, 1.0, 0.0
+        ],
+        "faces": [
+          0, 1, 2,
+          0, 2, 3
+        ],
+        "metadata": {
+          "type": "frame",
+          "name": "Main Frame"
+        }
+      }
+    ],
+    "materials": [
+      {
+        "name": "wood_oak",
+        "color": {
+          "r": 139,
+          "g": 69,
+          "b": 19,
+          "a": 1
+        },
+        "defaultCost": 800,
+        "layers": []
+      }
+    ]
+  }
+  
