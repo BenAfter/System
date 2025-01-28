@@ -1,47 +1,64 @@
 import React from 'react';
-import { Box, Paper, Slider, Typography, IconButton } from '@mui/material';
-import { ZoomIn, ZoomOut, Refresh, Palette } from '@mui/icons-material';
+import {
+  Box,
+  IconButton,
+  Tooltip,
+  Paper
+} from '@mui/material';
+import {
+  ZoomIn,
+  ZoomOut,
+  RestartAlt,
+  Palette,
+  SaveAlt
+} from '@mui/icons-material';
 
-const ModelControls = ({ onZoom, onReset, onMaterialEdit }) => {
+const ModelControls = ({ onZoom, onReset, onMaterialEdit, onExport }) => {
   return (
-    <Paper 
-      sx={{ 
-        position: 'absolute', 
-        top: 20, 
-        right: 20, 
-        p: 2,
+    <Paper
+      elevation={3}
+      sx={{
+        position: 'absolute',
+        right: 16,
+        top: '50%',
+        transform: 'translateY(-50%)',
         display: 'flex',
         flexDirection: 'column',
-        gap: 2
+        gap: 1,
+        p: 1
       }}
     >
-      <Box>
-        <Typography gutterBottom>Zoom</Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <IconButton onClick={() => onZoom(-1)}>
-            <ZoomOut />
-          </IconButton>
-          <Slider
-            defaultValue={1}
-            min={0.1}
-            max={2}
-            step={0.1}
-            onChange={(_, value) => onZoom(value)}
-          />
-          <IconButton onClick={() => onZoom(1)}>
-            <ZoomIn />
-          </IconButton>
-        </Box>
-      </Box>
-      
-      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-        <IconButton onClick={onReset} title="Reset View">
-          <Refresh />
+      <Tooltip title="Zoom In" placement="left">
+        <IconButton onClick={() => onZoom(-1)}>
+          <ZoomIn />
         </IconButton>
-        <IconButton onClick={onMaterialEdit} title="Edit Materials">
+      </Tooltip>
+
+      <Tooltip title="Zoom Out" placement="left">
+        <IconButton onClick={() => onZoom(1)}>
+          <ZoomOut />
+        </IconButton>
+      </Tooltip>
+
+      <Tooltip title="Reset View" placement="left">
+        <IconButton onClick={onReset}>
+          <RestartAlt />
+        </IconButton>
+      </Tooltip>
+
+      <Box sx={{ my: 1, borderTop: 1, borderColor: 'divider' }} />
+
+      <Tooltip title="Edit Materials" placement="left">
+        <IconButton onClick={onMaterialEdit}>
           <Palette />
         </IconButton>
-      </Box>
+      </Tooltip>
+
+      <Tooltip title="Export" placement="left">
+        <IconButton onClick={onExport}>
+          <SaveAlt />
+        </IconButton>
+      </Tooltip>
     </Paper>
   );
 };
