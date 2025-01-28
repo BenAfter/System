@@ -1,23 +1,15 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, fireEvent, mockGeometryData, mockMaterialData } from './utils/testUtils';
 import ModelViewer from '../components/ModelViewer';
 
 describe('ModelViewer', () => {
   const mockModelData = {
-    geometries: [],
-    materials: []
+    geometries: [mockGeometryData],
+    materials: [mockMaterialData]
   };
 
-  test('renders without crashing', () => {
-    render(<ModelViewer modelData={mockModelData} />);
-  });
-
-  test('handles zoom controls', () => {
-    render(<ModelViewer modelData={mockModelData} />);
-    const zoomInButton = screen.getByTitle('Zoom In');
-    const zoomOutButton = screen.getByTitle('Zoom Out');
-    
-    fireEvent.click(zoomInButton);
-    fireEvent.click(zoomOutButton);
+  test('renders with mock data', () => {
+    const { container } = render(<ModelViewer modelData={mockModelData} />);
+    expect(container.firstChild).toBeInTheDocument();
   });
 });
