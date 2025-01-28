@@ -1,17 +1,26 @@
 import React from 'react';
-import { Box, AppBar, Toolbar, Typography, Container } from '@mui/material';
+import { Box, Container, AppBar, Toolbar, Typography } from '@mui/material';
+import ModelControls from './ModelControls';
 
 const MainLayout = ({ children }) => {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <AppBar position="static">
         <Toolbar>
-          <Typography variant="h6">Cost Estimator</Typography>
+          <Typography variant="h6">
+            3D Cost Estimator
+          </Typography>
         </Toolbar>
       </AppBar>
-      <Container maxWidth={false} sx={{ flexGrow: 1, mt: 2 }}>
+      
+      <Box sx={{ 
+        flex: 1, 
+        position: 'relative',
+        overflow: 'hidden',
+        bgcolor: '#f5f5f5'
+      }}>
         {children}
-      </Container>
+      </Box>
     </Box>
   );
 };
