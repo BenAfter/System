@@ -1,119 +1,96 @@
 import React from 'react';
-import { 
-  Box, 
-  Button, 
+import {
+  Box,
+  Card,
+  CardContent,
+  Grid,
   Typography,
-  Grid 
+  IconButton
 } from '@mui/material';
+import {
+  Wood,
+  Opacity,
+  Window,
+  Construction,
+  Palette
+} from '@mui/icons-material';
 
-const MATERIAL_PRESETS = {
-  concrete: {
-    name: 'Concrete',
-    color: { r: 169, g: 169, b: 169, a: 1 },
-    defaultCost: 150,
-    texture: '/textures/concrete.jpg'
-  },
-  steel: {
-    name: 'Steel',
-    color: { r: 192, g: 192, b: 192, a: 1 },
-    defaultCost: 300,
-    texture: '/textures/metal.jpg'
-  },
-  glass: {
-    name: 'Glass',
-    color: { r: 255, g: 255, b: 255, a: 0.5 },
-    defaultCost: 200,
-    texture: '/textures/glass.jpg'
-  },
-  brick: {
-    name: 'Brick',
-    color: { r: 178, g: 34, b: 34, a: 1 },
-    defaultCost: 180,
-    texture: '/textures/brick.jpg'
-  },
-  wood: {
-    name: 'Wood',
+const MATERIAL_PRESETS = [
+  {
+    name: 'Solid Wood',
+    icon: <Wood />,
     color: { r: 139, g: 69, b: 19, a: 1 },
-    defaultCost: 120,
-    texture: '/textures/wood.jpg'
+    defaultCost: 800,
+    layers: [
+      { material: 'wood', thickness: 18, cost: 800 }
+    ]
   },
-  drywall: {
-    name: 'Drywall',
-    color: { r: 245, g: 245, b: 245, a: 1 },
-    defaultCost: 80,
-    texture: '/textures/drywall.jpg'
+  {
+    name: 'Glass Panel',
+    icon: <Window />,
+    color: { r: 200, g: 200, b: 255, a: 0.6 },
+    defaultCost: 1200,
+    layers: [
+      { material: 'glass', thickness: 6, cost: 1200 }
+    ]
   },
-  marble: {
-    name: 'Marble',
-    color: { r: 255, g: 251, b: 250, a: 1 },
-    defaultCost: 350,
-    texture: '/textures/marble.jpg'
+  {
+    name: 'Metal Frame',
+    icon: <Construction />,
+    color: { r: 192, g: 192, b: 192, a: 1 },
+    defaultCost: 1500,
+    layers: [
+      { material: 'metal', thickness: 2, cost: 1500 }
+    ]
   },
-  granite: {
-    name: 'Granite',
-    color: { r: 105, g: 105, b: 105, a: 1 },
-    defaultCost: 280,
-    texture: '/textures/granite.jpg'
+  {
+    name: 'Composite',
+    icon: <Palette />,
+    color: { r: 120, g: 120, b: 120, a: 1 },
+    defaultCost: 1000,
+    layers: [
+      { material: 'composite', thickness: 12, cost: 1000 }
+    ]
   },
-  aluminum: {
-    name: 'Aluminum',
-    color: { r: 211, g: 211, b: 211, a: 1 },
-    defaultCost: 250,
-    texture: '/textures/aluminum.jpg'
-  },
-  ceramic: {
-    name: 'Ceramic',
-    color: { r: 220, g: 220, b: 220, a: 1 },
-    defaultCost: 160,
-    texture: '/textures/ceramic.jpg'
-  },
-  plaster: {
-    name: 'Plaster',
-    color: { r: 245, g: 245, b: 245, a: 1 },
-    defaultCost: 90,
-    texture: '/textures/plaster.jpg'
-  },
-  vinyl: {
-    name: 'Vinyl',
-    color: { r: 240, g: 240, b: 240, a: 1 },
-    defaultCost: 70,
-    texture: '/textures/vinyl.jpg'
+  {
+    name: 'Laminate',
+    icon: <Opacity />,
+    color: { r: 245, g: 245, b: 220, a: 1 },
+    defaultCost: 600,
+    layers: [
+      { material: 'wood', thickness: 16, cost: 400 },
+      { material: 'plastic', thickness: 1, cost: 200 }
+    ]
   }
-};
+];
 
 const MaterialPresets = ({ onPresetSelect }) => {
   return (
     <Box sx={{ mt: 2 }}>
-      <Typography variant="h6" gutterBottom>
-        Construction Materials
-      </Typography>
-      <Grid container spacing={1}>
-        {Object.entries(MATERIAL_PRESETS).map(([key, preset]) => (
-          <Grid item xs={4} sm={3} md={2} key={key}>
-            <Button 
-              variant="outlined"
-              onClick={() => onPresetSelect(preset)}
-              sx={{
-                width: '100%',
-                height: '70px',
-                backgroundColor: `rgba(${preset.color.r}, ${preset.color.g}, ${preset.color.b}, ${preset.color.a})`,
-                '&:hover': {
-                  backgroundColor: `rgba(${preset.color.r}, ${preset.color.g}, ${preset.color.b}, ${preset.color.a * 0.9})`
-                },
-                display: 'flex',
-                flexDirection: 'column',
-                padding: '8px',
-                border: '1px solid rgba(0, 0, 0, 0.23)',
-                borderRadius: '4px'
+      <Grid container spacing={2}>
+        {MATERIAL_PRESETS.map((preset) => (
+          <Grid item xs={12} sm={6} md={4} key={preset.name}>
+            <Card 
+              sx={{ 
+                cursor: 'pointer',
+                '&:hover': { bgcolor: 'action.hover' }
               }}
+              onClick={() => onPresetSelect(preset)}
             >
-              <Typography variant="subtitle2" sx={{ color: '#000', fontWeight: 'bold' }}>
-                {preset.name}
-              </Typography>
-              <Typography variant="caption" sx={{ color: '#666' }}>
-                ${preset.defaultCost}/m²
-              </Typography>
-            </Button>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <IconButton size="small" color="primary">
+                    {preset.icon}
+                  </IconButton>
+                  <Typography variant="subtitle1">
+                    {preset.name}
+                  </Typography>
+                </Box>
+                <Typography variant="body2" color="text.secondary">
+                  Base cost: ${preset.defaultCost}/m³
+                </Typography>
+              </CardContent>
+            </Card>
           </Grid>
         ))}
       </Grid>
