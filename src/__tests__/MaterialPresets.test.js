@@ -1,13 +1,15 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, fireEvent, mockMaterialData } from './utils/testUtils';
 import MaterialPresets from '../components/MaterialPresets';
 
 describe('MaterialPresets', () => {
-  test('selects preset', () => {
+  test('selects preset material', () => {
     const handleSelect = jest.fn();
-    render(<MaterialPresets onPresetSelect={handleSelect} />);
+    const { getByText } = render(<MaterialPresets onPresetSelect={handleSelect} />);
     
-    fireEvent.click(screen.getByText('Solid Wood'));
-    expect(handleSelect).toHaveBeenCalled();
+    fireEvent.click(getByText('Solid Wood'));
+    expect(handleSelect).toHaveBeenCalledWith(expect.objectContaining({
+      name: 'Solid Wood'
+    }));
   });
 });
