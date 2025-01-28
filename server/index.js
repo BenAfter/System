@@ -1,15 +1,24 @@
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
+const connectDB = require('./config/database');
+const dbUtils = require('./utils/dbUtils');
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
+// Connect to database
+connectDB();
+
 // Model data endpoint
-app.get('/api/model-data', (req, res) => {
+app.get('/api/model-data', async (req, res) => {
   try {
-    const modelData = require('./data/model-data.json');
+    const materials = await dbUtils.getMaterials();
+    const modelData = {
+      geometries: require('./data/model-data.json').geometries,
+      materials
+    };
     res.json(modelData);
   } catch (error) {
     res.status(500).json({ error: 'Failed to load model data' });
@@ -17,45 +26,32 @@ app.get('/api/model-data', (req, res) => {
 });
 
 // Save configuration endpoint
-app.post('/api/save-config', (req, res) => {
+app.post('/api/save-config', async (req, res) => {
   try {
-    const config = req.body;
-    // Save logic here
-    res.json({ success: true, id: Date.now() });
+    const config = await dbUtils.saveConfiguration(req.body);
+    res.json({ success: true, id: config._id });
   } catch (error) {
     res.status(500).json({ error: 'Failed to save configuration' });
   }
 });
 
 // Load configuration endpoint
-app.get('/api/load-config/:id', (req, res) => {
+app.get('/api/load-config/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    // Load logic here
-    res.json({ /* configuration data */ });
+    const config = await dbUtils.getConfiguration(req.params.id);
+    res.json(config);
   } catch (error) {
     res.status(500).json({ error: 'Failed to load configuration' });
   }
 });
 
 // Material presets endpoint
-app.get('/api/material-presets', (req, res) => {
+app.get('/api/material-presets', async (req, res) => {
   try {
-    const presets = require('./data/material-presets.json');
-    res.json(presets);
+    const materials = await dbUtils.getMaterials();
+    res.json({ presets: materials });
   } catch (error) {
     res.status(500).json({ error: 'Failed to load material presets' });
-  }
-});
-
-// Export report endpoint
-app.post('/api/export-report', (req, res) => {
-  try {
-    const reportData = req.body;
-    // Report generation logic here
-    res.json({ success: true, url: 'path/to/report' });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to generate report' });
   }
 });
 
